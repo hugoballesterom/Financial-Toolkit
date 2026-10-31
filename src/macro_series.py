@@ -14,8 +14,10 @@ class MacroSeries:
     Attributes:
         data: Values indexed by a pd.DatetimeIndex, sorted ascending.
         series_id: Identifier in the source (e.g. "UNRATE" in FRED).
-        release: Which version of the data: "latest", or n for the
-            n-th release (1 = first publication).
+        release: Which version of the data. An int n is the n-th
+            release (1 = first publication), "latest" the most recent
+            version, and a pd.Timestamp the latest version published
+            up to that date.
         mean, std: Computed from data.
         start, end: First and last dates in data.
         n_obs: Number of non-null observations.
@@ -34,7 +36,7 @@ class MacroSeries:
     unit: str
     country: str
     category: str # TODO: replace with an Enum once categories are fixed
-    release: int | str = "latest"
+    release: int | str | pd.Timestamp = 'latest'
     mean: float = field(init=False)
     std: float = field(init=False)
     start: pd.Timestamp = field(init=False)
