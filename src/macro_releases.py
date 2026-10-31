@@ -4,6 +4,7 @@ from datetime import datetime
 import pandas as pd
 from pandas.api.types import is_datetime64_any_dtype, is_numeric_dtype
 
+from enums import Frequency
 from macro_series import MacroSeries
 
 
@@ -18,26 +19,31 @@ class MacroReleases:
         data: Long DataFrame with columns date (reference period),
             release_date (publication date) and value. Stored sorted
             and indexed by date. Dates given as strings are converted.
-        series_id, name, source, frequency, unit, country, category:
-            Metadata passed on to every MacroSeries it returns.
+        series_id, name, source, frequency, unit, country, category,
+            seasonally_adjusted: Metadata passed on to every MacroSeries
+            it returns.
 
     Raises:
         TypeError: If data is not a pd.DataFrame.
         ValueError: If columns are missing, data is empty, value is not
-            numeric or dates cannot be parsed.
+            numeric, dates cannot be parsed or frequency is not a valid
+            Frequency.
     """
 
     data: pd.DataFrame = field(repr=False, compare=False)
     series_id: str
     name: str
     source: str
-    frequency: str
+    frequency: Frequency
     unit: str
     country: str
-    category: str # TODO: replace with an Enum once categories are fixed
+    category: str | None = None  # TODO: consider whether to remove it
+    seasonally_adjusted: bool | None = None
 
     def __post_init__(self) -> None:
         """Validate data, parse dates and sort by period."""
+
+        self.frequency = Frequency(self.frequency)
 
         if not isinstance(self.data, pd.DataFrame):
             raise TypeError(
@@ -82,6 +88,7 @@ class MacroReleases:
             country=self.country,
             category=self.category,
             release=release,
+            seasonally_adjusted=self.seasonally_adjusted,
         )
 
     def get_release(self, release: int | str | datetime) -> MacroSeries:

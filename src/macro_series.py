@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
 
+from enums import Frequency
+
 
 @dataclass(kw_only=True)
 class MacroSeries:
@@ -18,6 +20,8 @@ class MacroSeries:
             release (1 = first publication), "latest" the most recent
             version, and a pd.Timestamp the latest version published
             up to that date.
+        seasonally_adjusted: True if seasonally adjusted, False if
+            not, None if the source does not say.
         mean, std: Computed from data.
         start, end: First and last dates in data.
         n_obs: Number of non-null observations.
@@ -25,18 +29,20 @@ class MacroSeries:
     Raises:
         TypeError: If data is not a pd.Series or its index is not a
             pd.DatetimeIndex.
-        ValueError: If data is empty or not numeric.
+        ValueError: If data is empty or not numeric, or frequency 
+        is not a valid Frequency.
     """
 
     data: pd.Series = field(repr=False, compare=False)
     series_id: str
     name: str
     source: str
-    frequency: str
+    frequency: Frequency
     unit: str
     country: str
-    category: str # TODO: replace with an Enum once categories are fixed
+    category: str | None = None  # TODO: consider whether to remove it
     release: int | str | pd.Timestamp = 'latest'
+    seasonally_adjusted: bool | None = None
     mean: float = field(init=False)
     std: float = field(init=False)
     start: pd.Timestamp = field(init=False)
@@ -45,6 +51,8 @@ class MacroSeries:
 
     def __post_init__(self) -> None:
         """Validate data and compute summary statistics."""
+
+        self.frequency = Frequency(self.frequency)
 
         if not isinstance(self.data, pd.Series):
             raise TypeError(f"data must be a Series, got {type(self.data).__name__}")
