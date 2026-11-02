@@ -32,6 +32,7 @@ class FREDFetcher:
     SEASONAL_ADJUSTMENT_MAP: ClassVar[dict[str, bool]] = {
         'SA': True,
         'SAAR': True,
+        'SSA': True,
         'NSA': False,
     }
     
