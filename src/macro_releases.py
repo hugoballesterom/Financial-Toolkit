@@ -10,7 +10,7 @@ from pandas.api.types import (
 )
 
 from enums import Frequency
-from macro_series import MacroSeries
+from macro_series import MacroSeries, parse_release
 
 
 @dataclass(kw_only=True)
@@ -123,41 +123,45 @@ class MacroReleases:
         """Return one version of the series as a MacroSeries.
 
         Args:
-            release: An int n for the n-th release of each period
-                (1 = first publication; periods with fewer versions are
+            release: An int n for the n-th distinct value of each period
+                (1 = first publication, 2 = first revision that changed
+                it, and so on; periods with fewer distinct values are
                 left out), "latest" for the most recent value, or a date
                 (str, datetime or pd.Timestamp) for the latest value
-                published on or before it.
+                published on or before it. Timezones are dropped.
 
         Raises:
             TypeError: If release has an unsupported type.
-            ValueError: If release is < 1, an unknown string, or no data
-                matches.
+            ValueError: If release is < 1, a string that is neither
+                "latest" nor a date, greater than the most distinct
+                values of any period, or before the first release_date.
         """
 
-        if isinstance(release, bool) or not isinstance(release, (int, str, datetime)):
-            raise TypeError(
-                f"release must be an int, 'latest' or a date, got {type(release).__name__}"
-            )
-        
+        release = parse_release(release)
+        by_period = self.data.groupby(level=0)['value']
+
         if isinstance(release, int):
-            if release < 1:
+            max_release = by_period.size().max()
+            if release > max_release:
                 raise ValueError(
-                    f"release must be >= 1 (1 = first publication), got {release}"
+                    f"release must be <= {max_release} (most versions of any "
+                    f"period), got {release}"
                 )
-            
+
             # nth counts from 0, release counts from 1
-            return self._to_series(self.data.groupby(level=0)['value'].nth(release - 1), release)
+            return self._to_series(by_period.nth(release - 1), release)
 
         if release == 'latest':
-            return self._to_series(self.data.groupby(level=0)['value'].last(), release)
+            return self._to_series(by_period.nth(-1), release)
 
-        try:
-            release = pd.Timestamp(release)
-        except ValueError as err:
+        first_release = self.data['release_date'].min()
+        if release < first_release:
             raise ValueError(
-                f"release must be an int, 'latest' or a date, got {release!r}"
-            ) from err
+                f"release must be on or after the first release_date "
+                f"{first_release.date()}, got {release.date()}"
+            )
 
         mask = self.data['release_date'] <= release
-        return self._to_series(self.data[mask].groupby(level=0)['value'].last(), release)
+        return self._to_series(
+            self.data[mask].groupby(level=0)['value'].nth(-1), release
+        )
