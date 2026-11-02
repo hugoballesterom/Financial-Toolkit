@@ -2,7 +2,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 import pandas as pd
-from pandas.api.types import is_datetime64_any_dtype, is_numeric_dtype
+from pandas.api.types import (
+    is_bool_dtype,
+    is_datetime64_any_dtype,
+    is_numeric_dtype,
+    is_string_dtype,
+)
 
 from enums import Frequency
 from macro_series import MacroSeries
@@ -26,8 +31,9 @@ class MacroReleases:
     Raises:
         TypeError: If data is not a pd.DataFrame.
         ValueError: If columns are missing, data is empty, value is not
-            numeric, dates cannot be parsed or frequency is not a valid
-            Frequency.
+            numeric (bool included), dates cannot be parsed or are
+            missing (NaT), a (date, release_date) pair is repeated, or
+            frequency is not a valid Frequency.
     """
 
     data: pd.DataFrame = field(repr=False, compare=False)
@@ -43,7 +49,13 @@ class MacroReleases:
     def __post_init__(self) -> None:
         """Validate data, parse dates and sort by period."""
 
-        self.frequency = Frequency(self.frequency)
+        valid = [f.value for f in Frequency]
+        try:
+            self.frequency = Frequency(self.frequency)
+        except ValueError as err:
+            raise ValueError(
+                f"frequency must be one of {valid}, got {self.frequency!r}"
+            ) from err
 
         if not isinstance(self.data, pd.DataFrame):
             raise TypeError(
@@ -55,29 +67,45 @@ class MacroReleases:
         required = {'date', 'release_date', 'value'}
         missing = required - set(self.data.columns)
         if missing:
-            raise ValueError(f"data is missing columns: {sorted(missing)}")
-        
-        if self.data.empty:
-            raise ValueError("data cannot be empty")
-
-        if not is_numeric_dtype(self.data['value']):
             raise ValueError(
-                f"data values must be numeric, got dtype {self.data['value'].dtype}"
+                f"data must have columns {sorted(required)}, "
+                f"got {sorted(self.data.columns)}"
             )
+
+        if self.data.empty:
+            raise ValueError("data must not be empty, got 0 rows")
+
+        value_dtype = self.data['value'].dtype
+        if is_bool_dtype(value_dtype) or not is_numeric_dtype(value_dtype):
+            raise ValueError(f"data values must be numeric, got dtype {value_dtype}")
 
         for c in ['date', 'release_date']:
             if not is_datetime64_any_dtype(self.data[c]):
+                not_dates = f"{c} must contain dates, got dtype {self.data[c].dtype}"
+                if not is_string_dtype(self.data[c]):
+                    raise ValueError(not_dates)
                 try:
                     self.data[c] = pd.to_datetime(self.data[c], format='ISO8601')
                 except ValueError as err:
-                    raise ValueError(
-                        f"{c} must contain dates, got dtype {self.data[c].dtype}"
-                    ) from err
-                
+                    raise ValueError(not_dates) from err
+
+            # groupby drops NaT dates and NaT release dates break the ordering
+            n_missing = self.data[c].isna().sum()
+            if n_missing:
+                raise ValueError(f"{c} must not contain NaT, got {n_missing}")
+
+        # A repeated pair makes the n-th and latest value ambiguous
+        n_dupes = self.data.duplicated(subset=['date', 'release_date']).sum()
+        if n_dupes:
+            raise ValueError(
+                f"(date, release_date) pairs must be unique, got {n_dupes} duplicates"
+            )
+
         self.data = self.data.sort_values(by=['date', 'release_date']).set_index('date')
 
     def _to_series(self, data: pd.Series, release: int | str | pd.Timestamp) -> MacroSeries:
         """Wrap a single version in a MacroSeries with this object's metadata."""
+
         return MacroSeries(
             data=data,
             series_id=self.series_id,
