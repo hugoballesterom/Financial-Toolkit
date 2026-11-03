@@ -5,7 +5,7 @@ from numbers import Integral
 import pandas as pd
 from pandas.api.types import is_bool_dtype, is_numeric_dtype, is_string_dtype
 
-from enums import Frequency
+from models.enums import Frequency
 
 
 def parse_release(release: int | str | datetime) -> int | str | pd.Timestamp:

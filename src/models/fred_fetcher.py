@@ -9,10 +9,10 @@ import pandas as pd
 from dotenv import load_dotenv
 from fredapi import Fred
 
-from enums import Frequency
-from exceptions import RateLimitError
-from macro_releases import MacroReleases
-from macro_series import MacroSeries
+from models.enums import Frequency
+from models.exceptions import RateLimitError
+from models.macro_releases import MacroReleases
+from models.macro_series import MacroSeries
 
 
 class FREDFetcher:
@@ -193,8 +193,6 @@ class FREDFetcher:
 
         data = self._call(self._fred.get_series_all_releases, series_id)
         data = data.rename(columns={'realtime_start': 'release_date'})
-
-        vintage_dates = self._call(self._fred.get_series_vintage_dates, series_id)
 
         # ALFRED marks missing vintages as "."; fredapi stores them as NaN, but its
         # transposed DataFrame turns them into NaT.
