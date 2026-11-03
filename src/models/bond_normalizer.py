@@ -25,12 +25,45 @@ class BondNormalizer:
         "US30Y": ("BC_30YEAR", 30),
     }
 
-    BCE_COUNTRIES = {
-        "ES10Y": ("ES", "España"),
-        "FR10Y": ("FR", "Francia"),
-        "IT10Y": ("IT", "Italia"),
-        "DE10Y": ("DE", "Alemania"),
+    BCE_MATURITIES = {
+        "EU3M": 3 / 12,
+        "EU4M": 4 / 12,
+        "EU6M": 6 / 12,
+        "EU1Y": 1,
+        "EU2Y": 2,
+        "EU3Y": 3,
+        "EU5Y": 5,
+        "EU7Y": 7,
+        "EU10Y": 10,
+        "EU20Y": 20,
+        "EU30Y": 30,
     }
+
+    JAPAN_FIELDS = {
+        "JP1Y": ("1Y", 1),
+        "JP2Y": ("2Y", 2),
+        "JP3Y": ("3Y", 3),
+        "JP4Y": ("4Y", 4),
+        "JP5Y": ("5Y", 5),
+        "JP6Y": ("6Y", 6),
+        "JP7Y": ("7Y", 7),
+        "JP8Y": ("8Y", 8),
+        "JP9Y": ("9Y", 9),
+        "JP10Y": ("10Y", 10),
+        "JP15Y": ("15Y", 15),
+        "JP20Y": ("20Y", 20),
+        "JP25Y": ("25Y", 25),
+        "JP30Y": ("30Y", 30),
+        "JP40Y": ("40Y", 40),
+    }
+
+    UK_FIELDS = {
+        "UK5Y": ("IUDSNPY", 5),
+        "UK10Y": ("IUDMNPY", 10),
+        "UK20Y": ("IUDLNPY", 20),
+    }
+
+    MAX_MISSING_RATIO = 0.05
 
     def normalize(
         self,
@@ -41,12 +74,15 @@ class BondNormalizer:
         end_date,
     ):
         ticker = ticker.strip().upper()
+        source = source.strip().lower()
+
         inicio = pd.Timestamp(start_date).normalize()
         fin = pd.Timestamp(end_date).normalize()
 
         if pd.isna(inicio) or pd.isna(fin) or inicio > fin:
             raise ValueError("Intervalo de fechas no válido.")
 
+        # 1. Interpretar el formato de la fuente.
         if source == "us_treasury":
             tabla = self._from_us_treasury(data, ticker)
 
@@ -54,55 +90,114 @@ class BondNormalizer:
             plazo = self.TREASURY_FIELDS[ticker][1]
 
             nombre = (
-                f"US Treasury par yield reference {ticker[2:]}"
+                f"US Treasury: rentabilidad a la par "
+                f"a {ticker[2:]} (USD)"
             )
 
         elif source == "bce":
-            if ticker not in self.BCE_COUNTRIES:
-                raise ValueError(
-                    f"Referencia no admitida: {ticker}"
-                )
+            self._validate_ticker(
+                ticker,
+                self.BCE_MATURITIES,
+            )
 
             tabla = self._from_bce(data)
 
-            pais, nombre_pais = self.BCE_COUNTRIES[ticker]
-            plazo = 10
+            pais = "U2"
+            plazo = self.BCE_MATURITIES[ticker]
 
             nombre = (
-                f"{nombre_pais}: referencia gubernamental "
-                "a 10 años (mensual)"
+                f"Zona euro AAA: rentabilidad a la par "
+                f"a {ticker[2:]} (EUR)"
             )
 
-            # Las fechas del BCE representan meses completos.
-            inicio = inicio.to_period("M").start_time
-            fin = fin.to_period("M").start_time
+        elif source == "japan":
+            tabla = self._from_japan(data, ticker)
+
+            pais = "JP"
+            plazo = self.JAPAN_FIELDS[ticker][1]
+
+            nombre = (
+                f"Japón JGB: rentabilidad a plazo constante "
+                f"a {ticker[2:]} (JPY)"
+            )
+
+        elif source == "uk":
+            tabla = self._from_uk(data, ticker)
+
+            pais = "GB"
+            plazo = self.UK_FIELDS[ticker][1]
+
+            nombre = (
+                f"Reino Unido: rentabilidad a la par "
+                f"a {ticker[2:]} (GBP)"
+            )
 
         else:
             raise ValueError(
                 f"Fuente no admitida: {source}"
             )
 
-        # Limpieza común para ambas fuentes.
-        tabla["date"] = pd.to_datetime(tabla["date"])
+        # 2. Convertir fechas y rentabilidades.
+        tabla["date"] = pd.to_datetime(
+            tabla["date"],
+            errors="coerce",
+        )
 
         tabla["ytm"] = pd.to_numeric(
             tabla["ytm"],
             errors="coerce",
         )
 
+        tabla["ytm"] = tabla["ytm"].replace(
+            [float("inf"), -float("inf")],
+            float("nan"),
+        )
+
+        if tabla["date"].isna().any():
+            raise ValueError(
+                f"Fechas ausentes o inválidas "
+                f"en {source} para {ticker}."
+            )
+
+        # 3. Filtrar fechas y eliminar duplicados idénticos.
         tabla = (
-            tabla.dropna(subset=["date", "ytm"])
-            .loc[
-                lambda df: df["date"].between(inicio, fin)
+            tabla.loc[
+                tabla["date"].between(inicio, fin)
             ]
-            .drop_duplicates(subset="date")
+            .drop_duplicates()
             .sort_values("date")
             .reset_index(drop=True)
         )
 
         if tabla.empty:
-            return None
+            raise ValueError(
+                f"Datos insuficientes en {source} para "
+                f"{ticker}: no hay registros en el intervalo."
+            )
 
+        if tabla["date"].duplicated().any():
+            raise ValueError(
+                f"Registros distintos para una misma fecha "
+                f"en {source} para {ticker}."
+            )
+
+        # 4. Comprobar los nulos antes de eliminarlos.
+        proporcion_nulos = tabla["ytm"].isna().mean()
+
+        if proporcion_nulos > self.MAX_MISSING_RATIO:
+            raise ValueError(
+                f"Datos insuficientes en {source} para "
+                f"{ticker}: {proporcion_nulos:.2%} de "
+                f"rentabilidades nulas. "
+                f"Máximo permitido: "
+                f"{self.MAX_MISSING_RATIO:.0%}."
+            )
+
+        tabla = tabla.dropna(
+            subset=["ytm"]
+        ).reset_index(drop=True)
+
+        # 5. Construir la serie y el objeto Bond.
         fechas = pd.DatetimeIndex(
             tabla["date"],
             name="date",
@@ -126,11 +221,18 @@ class BondNormalizer:
             series=serie,
         )
 
-    def _from_us_treasury(self, data, ticker):
-        if ticker not in self.TREASURY_FIELDS:
+    def _validate_ticker(self, ticker, mapping):
+        if ticker not in mapping:
             raise ValueError(
-                f"Referencia no admitida: {ticker}"
+                f"Referencia no admitida: {ticker}. "
+                f"Disponibles: {', '.join(mapping)}"
             )
+
+    def _from_us_treasury(self, data, ticker):
+        self._validate_ticker(
+            ticker,
+            self.TREASURY_FIELDS,
+        )
 
         campo = self.TREASURY_FIELDS[ticker][0]
 
@@ -161,7 +263,10 @@ class BondNormalizer:
                 )
 
                 if propiedades is None:
-                    continue
+                    raise ValueError(
+                        "Registro de US Treasury "
+                        "sin propiedades."
+                    )
 
                 fecha = propiedades.find(
                     "d:NEW_DATE",
@@ -173,15 +278,17 @@ class BondNormalizer:
                     espacios,
                 )
 
-                if fecha is None or rendimiento is None:
-                    continue
-
-                if not fecha.text or not rendimiento.text:
-                    continue
-
                 registros.append({
-                    "date": fecha.text,
-                    "ytm": rendimiento.text,
+                    "date": (
+                        fecha.text
+                        if fecha is not None
+                        else None
+                    ),
+                    "ytm": (
+                        rendimiento.text
+                        if rendimiento is not None
+                        else None
+                    ),
                 })
 
         return pd.DataFrame(
@@ -197,6 +304,14 @@ class BondNormalizer:
 
         tabla = pd.read_csv(StringIO(data))
 
+        if not {"TIME_PERIOD", "OBS_VALUE"}.issubset(
+            tabla.columns
+        ):
+            raise ValueError(
+                "Respuesta del BCE sin las columnas "
+                "TIME_PERIOD y OBS_VALUE."
+            )
+
         return tabla[
             ["TIME_PERIOD", "OBS_VALUE"]
         ].rename(
@@ -205,3 +320,87 @@ class BondNormalizer:
                 "OBS_VALUE": "ytm",
             }
         )
+
+    def _from_japan(self, data, ticker):
+        self._validate_ticker(
+            ticker,
+            self.JAPAN_FIELDS,
+        )
+
+        if not data or not data.strip():
+            return pd.DataFrame(
+                columns=["date", "ytm"]
+            )
+
+        # La primera línea contiene el título, no la cabecera.
+        tabla = pd.read_csv(
+            StringIO(data),
+            skiprows=1,
+        )
+
+        tabla.columns = tabla.columns.str.strip()
+
+        campo = self.JAPAN_FIELDS[ticker][0]
+
+        if not {"Date", campo}.issubset(tabla.columns):
+            raise ValueError(
+                f"Respuesta de Japón sin las columnas "
+                f"Date y {campo}."
+            )
+
+        tabla = tabla[
+            ["Date", campo]
+        ].rename(
+            columns={
+                "Date": "date",
+                campo: "ytm",
+            }
+        )
+
+        tabla["date"] = pd.to_datetime(
+            tabla["date"],
+            format="%Y/%m/%d",
+            errors="coerce",
+        )
+
+        return tabla
+
+    def _from_uk(self, data, ticker):
+        self._validate_ticker(
+            ticker,
+            self.UK_FIELDS,
+        )
+
+        if not data or not data.strip():
+            return pd.DataFrame(
+                columns=["date", "ytm"]
+            )
+
+        tabla = pd.read_csv(StringIO(data))
+
+        tabla.columns = tabla.columns.str.strip()
+
+        campo = self.UK_FIELDS[ticker][0]
+
+        if not {"DATE", campo}.issubset(tabla.columns):
+            raise ValueError(
+                f"Respuesta de Bank of England sin las "
+                f"columnas DATE y {campo}."
+            )
+
+        tabla = tabla[
+            ["DATE", campo]
+        ].rename(
+            columns={
+                "DATE": "date",
+                campo: "ytm",
+            }
+        )
+
+        tabla["date"] = pd.to_datetime(
+            tabla["date"],
+            format="%d %b %Y",
+            errors="coerce",
+        )
+
+        return tabla
