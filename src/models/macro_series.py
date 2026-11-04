@@ -73,7 +73,8 @@ class MacroSeries:
         source: Data provider (e.g. "FRED").
         frequency: Observation frequency as a Frequency (its value,
             e.g. "M", is also accepted).
-        unit: Unit of the values (e.g. "%").
+        unit: Unit of the values (e.g. "%"), None if the source does
+            not say.
         country: ISO 3166 country code.
         category: Optional user-defined label.
         release: Which version of the data. An int n is the n-th
@@ -101,7 +102,7 @@ class MacroSeries:
     name: str
     source: str
     frequency: Frequency
-    unit: str
+    unit: str | None
     country: str
     category: str | None = None  # TODO: consider whether to remove it
     release: int | str | pd.Timestamp = 'latest'

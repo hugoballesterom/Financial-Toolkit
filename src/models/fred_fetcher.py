@@ -9,13 +9,14 @@ import pandas as pd
 from dotenv import load_dotenv
 from fredapi import Fred
 
+from models.base_macro_fetcher import BaseMacroFetcher
 from models.enums import Frequency
 from models.exceptions import RateLimitError
 from models.macro_releases import MacroReleases
 from models.macro_series import MacroSeries
 
 
-class FREDFetcher:
+class FREDFetcher(BaseMacroFetcher):
     """Download macroeconomic data from FRED and ALFRED.
 
     Translates FRED metadata to the toolkit's standard vocabulary and
@@ -51,13 +52,24 @@ class FREDFetcher:
         api_key = api_key or os.getenv('FRED_API_KEY')
 
         if not api_key:
-            raise ValueError(
-                "FRED API key must be passed or set as FRED_API_KEY in .env, got none"
-            )
+            raise ValueError("FRED_API_KEY must be set in .env, got none")
 
         self._fred = Fred(api_key=api_key)
 
     def _call(self, method: Callable[..., Any], series_id: str, **kwargs: Any) -> Any:
+        """Call a fredapi method, trying again if the connection fails.
+
+        Raises:
+            RateLimitError: If FRED answers HTTP 429 on every attempt.
+            ValueError: If FRED rejects the request or has no data for it.
+            ConnectionError: If FRED cannot be reached or read on any attempt.
+        """
+
+        return self._with_retry(self._call_once, method, series_id, **kwargs)
+
+    def _call_once(
+        self, method: Callable[..., Any], series_id: str, **kwargs: Any
+    ) -> Any:
         """Call a fredapi method and turn its errors into toolkit errors.
 
         fredapi turns HTTP errors (unknown series, invalid API key, too many
@@ -90,7 +102,9 @@ class FREDFetcher:
                 f"FRED must be reachable, got {type(err).__name__}: {err}"
             ) from err
 
-    def _metadata(self, series_id: str, country: str, category: str | None) -> dict:
+    def _metadata(
+        self, series_id: str, country: str | None, category: str | None
+    ) -> dict:
         """Fetch series info from FRED and map it to MacroSeries fields."""
 
         info = self._call(self._fred.get_series_info, series_id)
@@ -112,16 +126,17 @@ class FREDFetcher:
             'frequency': frequency,
             'unit': info.get('units_short'),
             'seasonally_adjusted': seasonally_adjusted,
-            'country': country,
+            'country': 'US' if country is None else country,
             'category': category,
         }
 
     def get_macro_series(
         self,
         series_id: str,
+        *,
         start: str | datetime | None = None,
         end: str | datetime | None = None,
-        country: str = 'US',
+        country: str | None = None,
         category: str | None = None,  # TODO: consider whether to remove it
     ) -> MacroSeries:
         """Download the current (latest revised) values of a series.
@@ -129,8 +144,8 @@ class FREDFetcher:
         Args:
             series_id: FRED identifier, e.g. 'UNRATE'.
             start, end: Optional limits on the reference period.
-            country: ISO 3166 code. FRED does not provide it, so it
-                defaults to 'US'.
+            country: ISO 3166 code. FRED does not provide it, so None
+                becomes 'US'.
             category: Optional user-defined label.
 
         Raises:
@@ -164,9 +179,10 @@ class FREDFetcher:
     def get_macro_releases(
         self,
         series_id: str,
+        *,
         start: str | datetime | None = None,
         end: str | datetime | None = None,
-        country: str = 'US',
+        country: str | None = None,
         category: str | None = None,  # TODO: consider whether to remove it
     ) -> MacroReleases:
         """Download every published version of a series from ALFRED.
@@ -174,8 +190,8 @@ class FREDFetcher:
         Args:
             series_id: FRED identifier, e.g. 'UNRATE'.
             start, end: Optional limits on the reference period.
-            country: ISO 3166 code. FRED does not provide it, so it
-                defaults to 'US'.
+            country: ISO 3166 code. FRED does not provide it, so None
+                becomes 'US'.
             category: Optional user-defined label.
 
         Raises:
