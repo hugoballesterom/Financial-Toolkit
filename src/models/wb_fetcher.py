@@ -4,16 +4,18 @@ from typing import Any, ClassVar
 import pandas as pd
 import requests
 
+from models.base_macro_fetcher import BaseMacroFetcher
 from models.enums import Frequency
 from models.exceptions import RateLimitError
 from models.macro_series import MacroSeries
 
 
-class WorldBankFetcher:
+class WorldBankFetcher(BaseMacroFetcher):
     """Download macroeconomic data from the World Bank.
 
     Translates World Bank metadata to the toolkit's standard vocabulary and
-    returns MacroSeries.
+    returns MacroSeries. The API only reports the last update of a series, not
+    its past versions, so get_macro_releases is not available.
     """
 
     WB_URL = 'https://api.worldbank.org/v2'
@@ -25,6 +27,17 @@ class WorldBankFetcher:
     }
 
     def _get(self, path: str, **params: Any) -> Any:
+        """Call the World Bank API, trying again if the connection fails.
+
+        Raises:
+            RateLimitError: If the API answers HTTP 429 on every attempt.
+            ValueError: If the API rejects the request.
+            ConnectionError: If the API cannot be reached or read on any attempt.
+        """
+
+        return self._with_retry(self._get_once, path, **params)
+
+    def _get_once(self, path: str, **params: Any) -> Any:
         """Call the World Bank API and turn its errors into toolkit errors.
 
         The API answers HTTP 200 even when it rejects a request, either with
@@ -115,29 +128,33 @@ class WorldBankFetcher:
     def get_macro_series(
         self,
         series_id: str,
-        country: str,
+        *,
         start: str | datetime | None = None,
         end: str | datetime | None = None,
+        country: str | None = None,
         category: str | None = None,  # TODO: consider whether to remove it
     ) -> MacroSeries:
         """Download the values of a series for one country.
 
         Args:
             series_id: World Bank identifier, e.g. 'NY.GDP.MKTP.CD'.
-            country: ISO 3166 code, e.g. 'ES'.
             start, end: Optional limits on the reference period. Each annual
                 value is dated January 1, so start='2020-06-01' leaves out 2020.
+            country: ISO 3166 code, e.g. 'ES'. Required by this source.
             category: Optional user-defined label.
 
         Raises:
-            ValueError: If the World Bank rejects the request, has no data for
-                the country, reports a frequency not in FREQUENCY_MAP, or
-                start/end leave no observations.
+            ValueError: If country is None, the World Bank rejects the request,
+                has no data for the country, reports a frequency not in
+                FREQUENCY_MAP, or start/end leave no observations.
             RateLimitError: If the API answers HTTP 429 (too many requests).
                 It is a ConnectionError, so catching that also covers it.
             ConnectionError: If the API cannot be reached or its response
                 cannot be read.
         """
+
+        if country is None:
+            raise ValueError("country must be an ISO 3166 code, got None")
 
         meta, rows = self._get(
             f"country/{country}/indicator/{series_id}", per_page=20000
