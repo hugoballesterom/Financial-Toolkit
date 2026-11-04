@@ -41,7 +41,7 @@ class MacroReleases:
     name: str
     source: str
     frequency: Frequency
-    unit: str
+    unit: str | None
     country: str
     category: str | None = None  # TODO: consider whether to remove it
     seasonally_adjusted: bool | None = None
