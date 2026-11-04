@@ -14,7 +14,7 @@ from balance_sheet import BalanceSheet
 from balance_sheet_history import BalanceSheetHistory
 from cashflow import CashFlow
 from cashflow_history import CashFlowHistory
-
+from index import Index
 
 income = [
     "revenue",
@@ -278,4 +278,82 @@ class FMPAPI:
             ticker=symbol,
             price=prices,
             company=company
+        )
+
+    def get_index(self,symbol: str,period: str = "5y") -> Index:
+
+        base_url = "https://financialmodelingprep.com/stable/"
+
+        today = date.today()
+
+        if period == "max":
+            start = date(1900, 1, 1)
+        else:
+            if not period.endswith("y"):
+                raise ValueError("Use periods such as 1y, 5y, 10y or max")
+
+            years = int(period[:-1])
+            start = today - timedelta(days=365 * years + 5)
+
+        params = {
+            "symbol": symbol,
+            "from": start.isoformat(),
+            "to": today.isoformat(),
+            "apikey": self.api_key
+        }
+
+        response = requests.get(
+            base_url + "historical-price-eod/full",
+            params=params,
+            timeout=30
+        )
+
+        if response.status_code == 402:
+            raise ValueError(
+                f"Historical prices for {symbol} require a paid FMP subscription"
+            )
+
+        response.raise_for_status()
+
+        prices_df = pd.DataFrame(response.json())
+
+        if prices_df.empty:
+            raise ValueError(f"No historical data found for {symbol}")
+
+        prices_df["date"] = pd.to_datetime(prices_df["date"])
+
+        prices_df = prices_df.sort_values("date").set_index("date")
+
+        volume = (
+            prices_df["volume"]
+            if "volume" in prices_df.columns
+            and prices_df["volume"].notna().any()
+            and (prices_df["volume"] != 0).any()
+            else None
+        )
+
+        prices = PriceSeries(
+            date=prices_df.index,
+            open=prices_df["open"],
+            high=prices_df["high"],
+            low=prices_df["low"],
+            close=prices_df["close"],
+            volume=volume
+        )
+
+        index_names = {
+            "^GSPC": "S&P 500",
+            "^NDX": "NASDAQ-100",
+            "^DJI": "Dow Jones Industrial Average"
+        }
+
+        return Index(
+            name=index_names.get(symbol, symbol),
+            symbol=symbol,
+            country="United States",
+            currency="USD",
+            exchange=None,
+            price=prices,
+            constituents=None,
+            sector_weights=None
         )

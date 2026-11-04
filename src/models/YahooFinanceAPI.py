@@ -6,6 +6,7 @@ import math
 import pandas as pd
 import yfinance as yf
 
+from index import Index
 from priceseries import PriceSeries
 from stock import Stock
 from company import Company
@@ -124,4 +125,81 @@ class YahooFinanceAPI:
         fundamentals=fundamentals)
 
         return Stock(ticker=symbol,price=prices,company=company)
+
+    def get_index(self,symbol: str,start: str = "2020-01-01",end: str = None, etf_symbol: str = None) -> Index:
+
+        ticker = yf.Ticker(symbol)
+
+        prices_df = ticker.history(
+            start=start,
+            end=end,
+            auto_adjust=False
+        )
+
+        if prices_df.empty:
+            raise ValueError(f"The index {symbol} has not been found")
+
+        prices_df = prices_df.sort_index()
+
+        volume = (
+            prices_df["Volume"]
+            if "Volume" in prices_df.columns
+            and prices_df["Volume"].notna().any()
+            and (prices_df["Volume"] != 0).any()
+            else None
+        )
+
+        prices = PriceSeries(
+            date=prices_df.index,
+            open=prices_df["Open"],
+            high=prices_df["High"],
+            low=prices_df["Low"],
+            close=prices_df["Close"],
+            volume=volume
+        )
+
+        info = ticker.info
+
+        name = info.get("longName") or info.get("shortName") or symbol
+        country = info.get("country")
+        currency = info.get("currency")
+        exchange = info.get("exchange")
+
+        constituents = None
+        sector_weights = None
+
+        if etf_symbol is not None:
+
+            etf = yf.Ticker(etf_symbol)
+
+            try:
+                holdings = etf.funds_data.top_holdings
+
+                if holdings is not None and not holdings.empty:
+                    constituents = holdings.copy()
+
+            except (AttributeError, KeyError, ValueError) as e:
+                print(f"Could not retrieve ETF holdings: {e}")
+
+            try:
+                sectors = etf.funds_data.sector_weightings
+
+                if sectors:
+                    sector_weights = sectors
+
+            except (AttributeError, KeyError, ValueError) as e:
+                print(f"Could not retrieve sector weights: {e}")
+
+        index = Index(
+            name=name,
+            symbol=symbol,
+            country=country,
+            currency=currency,
+            exchange=exchange,
+            price=prices,
+            constituents=constituents,
+            sector_weights=sector_weights
+        )
+
+        return index
 
