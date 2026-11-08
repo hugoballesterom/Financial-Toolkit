@@ -6,13 +6,14 @@ El efectivo negativo representa financiacion pendiente de incorporar intereses.
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from datetime import date as Date, datetime
+from datetime import date as Date
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
-
-from cryptocurrency import Cryptocurrency
 from cash_movement import CashMovement
+from cryptocurrency import Cryptocurrency
+from monte_carlo import MonteCarloResult
 from position import Position
 from transaction import ALLOWED_TYPES, Transaction
 
@@ -440,3 +441,114 @@ class Portfolio:
         """Drawdown observado, ajustado por flujos; puede omitir caidas entre fechas."""
         growth = self.growth()
         return growth / growth.cummax().clip(lower=1) - 1
+
+    def monte_carlo(
+        self,
+        n_simulations: int = 10_000,
+        years: float = 1.0,
+        *,
+        asset: str | None = None,
+        seed: int | None = None,
+    ) -> MonteCarloResult:
+        """Simulate future values with normal log returns per step.
+
+        The portfolio is simulated with its current weights held fixed (cash
+        earns 0). With asset, only that asset is simulated from its last price.
+
+        Args:
+            n_simulations: Number of simulated paths.
+            years: Horizon. Converted to steps with periods_per_year.
+            asset: Identifier of one asset, or None for the whole portfolio.
+            seed: Seed for reproducible results.
+
+        Returns:
+            Simulated paths and the parameters used to generate them.
+
+        Raises:
+            ValueError: If n_simulations or years are not positive, the asset
+                is unknown, the portfolio has no assets, there is a movement
+                after the last common price date, a historical return is
+                -100% or worse, or the horizon is shorter than one step.
+        """
+        # 1. Validate the arguments and the reference date.
+        if (
+            isinstance(n_simulations, bool)
+            or not isinstance(n_simulations, (int, np.integer))
+            or n_simulations <= 0
+        ):
+            raise ValueError(
+                f"n_simulations must be a positive integer, got {n_simulations!r}"
+            )
+        if (
+            isinstance(years, bool)
+            or not isinstance(years, (int, float, np.number))
+            or not np.isfinite(years)
+            or years <= 0
+        ):
+            raise ValueError(f"years must be positive and finite, got {years!r}")
+        if not self.assets:
+            raise ValueError("Portfolio has no assets to simulate")
+        if asset is not None and asset not in self.assets:
+            raise ValueError(
+                f"asset must be one of {sorted(self.assets)}, got {asset!r}"
+            )
+        common = self._closes().dropna(how="any")
+        if common.empty:
+            raise ValueError("Simulation requires a date with prices for every asset")
+        date = common.index[-1]
+        last_event = max(
+            [self.date]
+            + [t.date for t in self.transactions]
+            + [m.date for m in self.cash_movements]
+        )
+        if last_event > date:
+            raise ValueError(
+                "Simulation needs a common valuation after the last movement"
+            )
+
+        # 2. Historical simple returns of the portfolio or of the asset.
+        asset_returns = self.asset_returns()
+        if asset is None:
+            returns = asset_returns @ self.weights(date)
+        else:
+            returns = asset_returns[asset]
+
+        # 3. Log returns per step.
+        if (returns <= -1).any():
+            raise ValueError("Log returns are undefined for losses of 100% or more")
+        log_returns = np.log1p(returns)
+        mu = float(log_returns.mean())
+        sigma = float(log_returns.std())
+
+        # 4. Initial value.
+        if asset is None:
+            initial_value = float(self.value().loc[date])
+        else:
+            initial_value = float(common.loc[date, asset])
+
+        # 5. Random log returns, one row per step and one column per path.
+        periods_per_year = self.sampling_info()["periods_per_year"]
+        steps = round(years * periods_per_year)
+        if steps < 1:
+            raise ValueError(
+                f"years must cover at least one step, got {years!r} "
+                f"with {periods_per_year:.1f} steps per year"
+            )
+        rng = np.random.default_rng(seed)
+        draws = rng.normal(mu, sigma, size=(steps, n_simulations))
+
+        # 6. Value paths, with row 0 equal to the initial value.
+        cumulative = np.vstack([np.zeros((1, n_simulations)), draws.cumsum(axis=0)])
+        paths = pd.DataFrame(initial_value * np.exp(cumulative))
+        paths.index.name = "step"
+        paths.columns.name = "simulation"
+
+        # 7. Result.
+        return MonteCarloResult(
+            paths=paths,
+            target=asset or "portfolio",
+            mu=mu,
+            sigma=sigma,
+            periods_per_year=periods_per_year,
+            seed=seed,
+        )
