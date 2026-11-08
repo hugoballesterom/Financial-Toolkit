@@ -1,7 +1,7 @@
-"""Cartera en USD con posiciones largas/cortas y efectivo firmado.
+"""USD portfolio with long/short positions and signed cash.
 
-Modelo sin comisiones, intereses, conversion de divisas ni llamadas de margen.
-El efectivo negativo representa financiacion pendiente de incorporar intereses.
+Model without fees, interest, currency conversion or margin calls.
+Negative cash is financing whose interest is not modelled yet.
 """
 
 from collections.abc import Mapping
@@ -108,7 +108,7 @@ class Portfolio:
 
     @property
     def cash(self):
-        """Saldo firmado tras la ultima operacion; sin intereses."""
+        """Signed balance after the last operation; no interest."""
         return self._cash
 
     @property
@@ -117,7 +117,7 @@ class Portfolio:
 
     @property
     def quantities(self):
-        """Vista compatible con el codigo anterior; Position guarda las unidades."""
+        """View kept for older code; Position stores the units."""
         return {key: position.quantity for key, position in self.positions.items()}
 
     @classmethod
@@ -174,20 +174,20 @@ class Portfolio:
         return self._record(asset, "SELL", quantity, date, price)
 
     def deposit(self, amount, date):
-        """Aporta efectivo; un saldo negativo se amortiza automaticamente."""
+        """Add cash; a negative balance is paid down automatically."""
         date = self._check_date(date)
         movement = CashMovement("DEPOSIT", amount, date)
         cash = self.cash + movement.cash_flow
         if not np.isfinite(cash):
             raise ValueError("Deposit exceeds numeric limits")
-        # Se necesita valorar la cartera en la fecha del flujo para medir TWR.
+        # The portfolio must be valued on the flow date to measure TWR.
         self._equity_at(date)
         self._cash = cash
         self.cash_movements.append(movement)
         return movement
 
     def withdraw(self, amount, date):
-        """Retira efectivo disponible sin financiar la retirada ni patrimonio negativo."""
+        """Withdraw available cash, without financing it or leaving negative equity."""
         date = self._check_date(date)
         movement = CashMovement("WITHDRAW", amount, date)
         if movement.amount > self.cash:
@@ -295,7 +295,7 @@ class Portfolio:
         return cash
 
     def external_cash_flows(self):
-        """Flujos externos por dia; las compras y ventas no son flujos externos."""
+        """External flows per day; buys and sells are not external flows."""
         flows = pd.Series(0.0, index=self._closes().index, name="external_cash_flow")
         for movement in self.cash_movements:
             flows.loc[movement.date] += movement.cash_flow
@@ -350,10 +350,11 @@ class Portfolio:
             self.positions[key].update_price(price)
 
     def returns(self, observed=False):
-        """Retornos ajustados por flujos externos al cierre de cada fecha.
+        """Returns adjusted for external flows at each date's close.
 
-        observed=True calcula entre valoraciones disponibles (no necesariamente diarias).
-        Los flujos externos exigen valoracion en su fecha para evitar rentabilidades falsas.
+        observed=True computes them between available valuations (not
+        necessarily daily). External flows need a valuation on their date to
+        avoid false returns.
         """
         equity = self.value()
         flows = self.external_cash_flows()
@@ -373,7 +374,7 @@ class Portfolio:
         return np.log1p(returns)
 
     def asset_returns(self):
-        """Retornos entre fechas comunes observables; conserva sus fechas reales."""
+        """Returns between observed common dates; keeps their real dates."""
         closes = self._common_closes()
         returns = closes.pct_change(fill_method=None).iloc[1:]
         if len(returns) < 2:
@@ -381,7 +382,7 @@ class Portfolio:
         return returns
 
     def sampling_info(self):
-        """Frecuencia de las fechas comunes usadas por las metricas de activos."""
+        """Frequency of the common dates used by the asset metrics."""
         self.asset_returns()
         dates = self._common_closes().index
         intervals = np.diff(dates.values) / np.timedelta64(1, "D")
@@ -401,10 +402,11 @@ class Portfolio:
         return periods
 
     def expected_return(self, periods=None):
-        """Estimacion anual aritmetica a pesos actuales, sin costes de financiacion.
+        """Annual arithmetic estimate at current weights, without financing costs.
 
-        Por defecto anualiza con el intervalo medio observado; aproximacion si es irregular.
-        periods permite indicar explicitamente observaciones por ano.
+        By default it annualizes with the mean observed interval, an
+        approximation if sampling is irregular. periods sets the number of
+        observations per year explicitly.
         """
         periods = self.sampling_info()["periods_per_year"] if periods is None else self._periods(periods)
         date = self._common_closes().index[-1]
@@ -416,7 +418,7 @@ class Portfolio:
     def volatility(self, periods=None):
         periods = self.sampling_info()["periods_per_year"] if periods is None else self._periods(periods)
         date = self._common_closes().index[-1]
-        # Los pesos historicos solo son validos si no hubo operaciones posteriores.
+        # Historical weights are only valid if there were no later operations.
         last_event = max([self.date] + [t.date for t in self.transactions] + [m.date for m in self.cash_movements])
         if last_event > date:
             raise ValueError("Current risk metrics need a common valuation after the last movement")
@@ -437,7 +439,7 @@ class Portfolio:
         return self.asset_returns().corr()
 
     def growth(self):
-        """Indice TWR en fechas observadas; aportaciones y retiradas no son beneficios."""
+        """TWR index on observed dates; deposits and withdrawals are not gains."""
         equity = self.value().dropna()
         if equity.empty or equity.index[0] != self.date:
             raise ValueError("Growth requires an initial equity valuation")
@@ -452,7 +454,7 @@ class Portfolio:
         return factors.cumprod().rename("growth")
 
     def drawdown(self):
-        """Drawdown observado, ajustado por flujos; puede omitir caidas entre fechas."""
+        """Observed drawdown, adjusted for flows; it can miss falls between dates."""
         growth = self.growth()
         return growth / growth.cummax().clip(lower=1) - 1
 
