@@ -248,7 +248,13 @@ class Portfolio:
     def _start(self):
         return self.date
 
-    def _closes(self):
+    def _closes(self, observed=False):
+        """Closes on a daily calendar.
+
+        By default stocks and indices carry their last close forward, which
+        is right for valuation. With observed=True every asset only has a
+        price on the days it was actually observed.
+        """
         series = {key: _close(asset) for key, asset in self.assets.items()}
         end = max([self.date] + [s.index[-1] for s in series.values()]
                   + [t.date for t in self.transactions]
@@ -257,11 +263,19 @@ class Portfolio:
         result = pd.DataFrame(index=calendar)
         for key, close in series.items():
             expanded = close.reindex(close.index.union(calendar)).sort_index()
-            if not isinstance(self.assets[key], Cryptocurrency):
+            if not observed and not isinstance(self.assets[key], Cryptocurrency):
                 expanded = expanded.ffill()
             result[key] = expanded.reindex(calendar)
         result.index.name = "date"
         return result
+
+    def _common_closes(self):
+        """Closes on the days every asset has an observed price, without filling.
+
+        Risk metrics use these dates: filled weekends would add false zero
+        returns and count calendar days as observations.
+        """
+        return self._closes(observed=True).dropna(how="any")
 
     def _positions(self):
         closes = self._closes()
@@ -360,7 +374,7 @@ class Portfolio:
 
     def asset_returns(self):
         """Retornos entre fechas comunes observables; conserva sus fechas reales."""
-        closes = self._closes().dropna(how="any")
+        closes = self._common_closes()
         returns = closes.pct_change(fill_method=None).iloc[1:]
         if len(returns) < 2:
             raise ValueError("At least three common price observations are required")
@@ -369,7 +383,7 @@ class Portfolio:
     def sampling_info(self):
         """Frecuencia de las fechas comunes usadas por las metricas de activos."""
         self.asset_returns()
-        dates = self._closes().dropna(how="any").index
+        dates = self._common_closes().index
         intervals = np.diff(dates.values) / np.timedelta64(1, "D")
         mean_days = float(intervals.mean())
         return {
@@ -393,7 +407,7 @@ class Portfolio:
         periods permite indicar explicitamente observaciones por ano.
         """
         periods = self.sampling_info()["periods_per_year"] if periods is None else self._periods(periods)
-        date = self._closes().dropna(how="any").index[-1]
+        date = self._common_closes().index[-1]
         last_event = max([self.date] + [t.date for t in self.transactions] + [m.date for m in self.cash_movements])
         if last_event > date:
             raise ValueError("Current risk metrics need a common valuation after the last movement")
@@ -401,7 +415,7 @@ class Portfolio:
 
     def volatility(self, periods=None):
         periods = self.sampling_info()["periods_per_year"] if periods is None else self._periods(periods)
-        date = self._closes().dropna(how="any").index[-1]
+        date = self._common_closes().index[-1]
         # Los pesos historicos solo son validos si no hubo operaciones posteriores.
         last_event = max([self.date] + [t.date for t in self.transactions] + [m.date for m in self.cash_movements])
         if last_event > date:
@@ -492,7 +506,7 @@ class Portfolio:
             raise ValueError(
                 f"asset must be one of {sorted(self.assets)}, got {asset!r}"
             )
-        common = self._closes().dropna(how="any")
+        common = self._common_closes()
         if common.empty:
             raise ValueError("Simulation requires a date with prices for every asset")
         date = common.index[-1]
