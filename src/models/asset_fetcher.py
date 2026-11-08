@@ -11,6 +11,7 @@ from bce_bond_api import BCEBondAPI
 from jp_bond_api import JapanBondAPI
 from uk_bond_api import UKBondAPI
 from bond_normalizer import BondNormalizer
+from cleaning import clean_prices
 
 
 @dataclass
@@ -33,6 +34,9 @@ class AssetFetcher:
     bond_normalizer: BondNormalizer = field(
         default_factory=BondNormalizer
     )
+
+    # Informe de limpieza de la última llamada a get_many, por símbolo.
+    cleaning_reports: dict = field(default_factory=dict, init=False)
 
     def get_many(self, solicitudes, *, start, end):
         """recibe la lista, elige el buscador de cada activo y reúne los resultados. Este es el comportamiento que queremos de AssetFetcher."""
@@ -69,6 +73,7 @@ class AssetFetcher:
         }
 
         activos = []
+        self.cleaning_reports = {}
 
         for solicitud in solicitudes:
             tipo = solicitud["type"].strip().lower()
@@ -113,6 +118,9 @@ class AssetFetcher:
                 )
             else:
                 activo = self._recortar(activo, start, end)
+                precios, informe = clean_prices(activo.price)
+                activo = replace(activo, price=precios)
+                self.cleaning_reports[symbol] = informe
 
             activos.append(activo)
 
