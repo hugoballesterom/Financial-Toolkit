@@ -13,14 +13,24 @@ class PriceSeries:
     close: pd.Series
     volume: pd.Series
 
+    def __post_init__(self):
+        if not pd.Index(self.date).equals(self.close.index):
+            raise ValueError("date must match the index of close")
+
     def to_dataframe(self) -> pd.DataFrame:
-        return pd.DataFrame({
-        "Open": self.open.to_numpy(),
-        "High": self.high.to_numpy(),
-        "Low": self.low.to_numpy(),
-        "Close": self.close.to_numpy(),
-        "Volume": self.volume.to_numpy()
-        }, index=self.date)
+        """OHLCV table indexed by date; columns that are None are left out."""
+        columns = {
+            "Open": self.open,
+            "High": self.high,
+            "Low": self.low,
+            "Close": self.close,
+            "Volume": self.volume,
+        }
+        table = pd.DataFrame(
+            {name: values for name, values in columns.items() if values is not None}
+        )
+        table.index.name = "date"
+        return table
 
     def current_price(self):
         return self.close.iloc[-1]
