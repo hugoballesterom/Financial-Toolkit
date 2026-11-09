@@ -2,7 +2,7 @@
 
 from .asset_fetcher import AssetFetcher
 from .bond import Bond
-from .cleaning import CleaningReport, clean_prices
+from .cleaning import CleaningReport, clean_prices, find_outliers
 from .coingeckoapi import CoinGeckoApi
 from .cryptocurrency import Cryptocurrency
 from .fmp_api import FMPAPI
@@ -19,6 +19,7 @@ __all__ = [
     "Bond",
     "CleaningReport",
     "clean_prices",
+    "find_outliers",
     "CoinGeckoApi",
     "Cryptocurrency",
     "FMPAPI",

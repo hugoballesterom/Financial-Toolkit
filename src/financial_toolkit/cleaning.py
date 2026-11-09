@@ -5,6 +5,11 @@ Days without a row are days without trading, and a row with a missing close
 is a broken record, so it is dropped instead of filled (filling would invent
 a price and a false zero return). Aligning assets with different calendars
 is a separate step.
+
+Outliers are counted but never changed: in finance extreme returns are
+usually real (crashes, earnings, crypto moves), and removing them would
+understate risk. A very large count usually points to a data error, such as
+an unadjusted split, so it is reported for the user to check.
 """
 
 from dataclasses import dataclass, replace
@@ -16,6 +21,9 @@ from .priceseries import PriceSeries
 
 # Same threshold as BondNormalizer.MAX_MISSING_RATIO.
 MAX_MISSING_RATIO = 0.05
+
+# Standard deviations from the mean log return to count a return as outlier.
+OUTLIER_STD = 5
 
 _COLUMNS = ('open', 'high', 'low', 'close', 'volume')
 
@@ -33,6 +41,8 @@ class CleaningReport:
         missing: Rows dropped because the close was missing, infinite or
             not positive.
         timezone: Original timezone of the dates, or None if they had none.
+        outliers: Log returns more than OUTLIER_STD standard deviations from
+            the mean. They are kept, only counted.
     """
 
     n_input: int
@@ -41,11 +51,29 @@ class CleaningReport:
     duplicates: int
     missing: int
     timezone: str | None
+    outliers: int = 0
 
     @property
     def n_dropped(self) -> int:
         """Total rows dropped."""
         return self.n_input - self.n_output
+
+
+def find_outliers(close: pd.Series, n_std: float = OUTLIER_STD) -> pd.Series:
+    """Log returns more than n_std standard deviations from their mean.
+
+    Args:
+        close: Positive closes indexed by date.
+        n_std: Distance from the mean, in standard deviations.
+
+    Returns:
+        The outlier log returns, indexed by date (empty if there are none).
+    """
+    returns = np.log(close / close.shift(1)).dropna()
+    if len(returns) < 2 or returns.std() == 0:
+        return returns.iloc[:0]
+    distance = (returns - returns.mean()).abs() / returns.std()
+    return returns[distance > n_std]
 
 
 def clean_prices(
@@ -57,7 +85,7 @@ def clean_prices(
     Steps: drop the timezone (keeping the local exchange time), drop invalid
     dates, sort, drop repeated timestamps keeping the last one, convert the
     columns to numbers and drop the rows whose close is missing, infinite or
-    not positive.
+    not positive. Finally the outliers are counted, without changing them.
 
     Args:
         prices: Price series as returned by a fetcher.
@@ -128,5 +156,6 @@ def clean_prices(
         duplicates=duplicates,
         missing=missing,
         timezone=timezone,
+        outliers=len(find_outliers(table['close'])),
     )
     return clean, report
