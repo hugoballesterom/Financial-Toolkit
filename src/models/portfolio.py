@@ -1,18 +1,19 @@
-"""Cartera en USD con posiciones largas/cortas y efectivo firmado.
+"""USD portfolio with long/short positions and signed cash.
 
-Modelo sin comisiones, intereses, conversion de divisas ni llamadas de margen.
-El efectivo negativo representa financiacion pendiente de incorporar intereses.
+Model without fees, interest, currency conversion or margin calls.
+Negative cash is financing whose interest is not modelled yet.
 """
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from datetime import date as Date, datetime
+from datetime import date as Date
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
-
-from cryptocurrency import Cryptocurrency
 from cash_movement import CashMovement
+from cryptocurrency import Cryptocurrency
+from monte_carlo import MonteCarloResult
 from position import Position
 from transaction import ALLOWED_TYPES, Transaction
 
@@ -107,7 +108,7 @@ class Portfolio:
 
     @property
     def cash(self):
-        """Saldo firmado tras la ultima operacion; sin intereses."""
+        """Signed balance after the last operation; no interest."""
         return self._cash
 
     @property
@@ -116,7 +117,7 @@ class Portfolio:
 
     @property
     def quantities(self):
-        """Vista compatible con el codigo anterior; Position guarda las unidades."""
+        """View kept for older code; Position stores the units."""
         return {key: position.quantity for key, position in self.positions.items()}
 
     @classmethod
@@ -173,20 +174,20 @@ class Portfolio:
         return self._record(asset, "SELL", quantity, date, price)
 
     def deposit(self, amount, date):
-        """Aporta efectivo; un saldo negativo se amortiza automaticamente."""
+        """Add cash; a negative balance is paid down automatically."""
         date = self._check_date(date)
         movement = CashMovement("DEPOSIT", amount, date)
         cash = self.cash + movement.cash_flow
         if not np.isfinite(cash):
             raise ValueError("Deposit exceeds numeric limits")
-        # Se necesita valorar la cartera en la fecha del flujo para medir TWR.
+        # The portfolio must be valued on the flow date to measure TWR.
         self._equity_at(date)
         self._cash = cash
         self.cash_movements.append(movement)
         return movement
 
     def withdraw(self, amount, date):
-        """Retira efectivo disponible sin financiar la retirada ni patrimonio negativo."""
+        """Withdraw available cash, without financing it or leaving negative equity."""
         date = self._check_date(date)
         movement = CashMovement("WITHDRAW", amount, date)
         if movement.amount > self.cash:
@@ -247,7 +248,13 @@ class Portfolio:
     def _start(self):
         return self.date
 
-    def _closes(self):
+    def _closes(self, observed=False):
+        """Closes on a daily calendar.
+
+        By default stocks and indices carry their last close forward, which
+        is right for valuation. With observed=True every asset only has a
+        price on the days it was actually observed.
+        """
         series = {key: _close(asset) for key, asset in self.assets.items()}
         end = max([self.date] + [s.index[-1] for s in series.values()]
                   + [t.date for t in self.transactions]
@@ -256,11 +263,19 @@ class Portfolio:
         result = pd.DataFrame(index=calendar)
         for key, close in series.items():
             expanded = close.reindex(close.index.union(calendar)).sort_index()
-            if not isinstance(self.assets[key], Cryptocurrency):
+            if not observed and not isinstance(self.assets[key], Cryptocurrency):
                 expanded = expanded.ffill()
             result[key] = expanded.reindex(calendar)
         result.index.name = "date"
         return result
+
+    def _common_closes(self):
+        """Closes on the days every asset has an observed price, without filling.
+
+        Risk metrics use these dates: filled weekends would add false zero
+        returns and count calendar days as observations.
+        """
+        return self._closes(observed=True).dropna(how="any")
 
     def _positions(self):
         closes = self._closes()
@@ -280,7 +295,7 @@ class Portfolio:
         return cash
 
     def external_cash_flows(self):
-        """Flujos externos por dia; las compras y ventas no son flujos externos."""
+        """External flows per day; buys and sells are not external flows."""
         flows = pd.Series(0.0, index=self._closes().index, name="external_cash_flow")
         for movement in self.cash_movements:
             flows.loc[movement.date] += movement.cash_flow
@@ -335,10 +350,11 @@ class Portfolio:
             self.positions[key].update_price(price)
 
     def returns(self, observed=False):
-        """Retornos ajustados por flujos externos al cierre de cada fecha.
+        """Returns adjusted for external flows at each date's close.
 
-        observed=True calcula entre valoraciones disponibles (no necesariamente diarias).
-        Los flujos externos exigen valoracion en su fecha para evitar rentabilidades falsas.
+        observed=True computes them between available valuations (not
+        necessarily daily). External flows need a valuation on their date to
+        avoid false returns.
         """
         equity = self.value()
         flows = self.external_cash_flows()
@@ -358,17 +374,17 @@ class Portfolio:
         return np.log1p(returns)
 
     def asset_returns(self):
-        """Retornos entre fechas comunes observables; conserva sus fechas reales."""
-        closes = self._closes().dropna(how="any")
+        """Returns between observed common dates; keeps their real dates."""
+        closes = self._common_closes()
         returns = closes.pct_change(fill_method=None).iloc[1:]
         if len(returns) < 2:
             raise ValueError("At least three common price observations are required")
         return returns
 
     def sampling_info(self):
-        """Frecuencia de las fechas comunes usadas por las metricas de activos."""
+        """Frequency of the common dates used by the asset metrics."""
         self.asset_returns()
-        dates = self._closes().dropna(how="any").index
+        dates = self._common_closes().index
         intervals = np.diff(dates.values) / np.timedelta64(1, "D")
         mean_days = float(intervals.mean())
         return {
@@ -386,13 +402,14 @@ class Portfolio:
         return periods
 
     def expected_return(self, periods=None):
-        """Estimacion anual aritmetica a pesos actuales, sin costes de financiacion.
+        """Annual arithmetic estimate at current weights, without financing costs.
 
-        Por defecto anualiza con el intervalo medio observado; aproximacion si es irregular.
-        periods permite indicar explicitamente observaciones por ano.
+        By default it annualizes with the mean observed interval, an
+        approximation if sampling is irregular. periods sets the number of
+        observations per year explicitly.
         """
         periods = self.sampling_info()["periods_per_year"] if periods is None else self._periods(periods)
-        date = self._closes().dropna(how="any").index[-1]
+        date = self._common_closes().index[-1]
         last_event = max([self.date] + [t.date for t in self.transactions] + [m.date for m in self.cash_movements])
         if last_event > date:
             raise ValueError("Current risk metrics need a common valuation after the last movement")
@@ -400,8 +417,8 @@ class Portfolio:
 
     def volatility(self, periods=None):
         periods = self.sampling_info()["periods_per_year"] if periods is None else self._periods(periods)
-        date = self._closes().dropna(how="any").index[-1]
-        # Los pesos historicos solo son validos si no hubo operaciones posteriores.
+        date = self._common_closes().index[-1]
+        # Historical weights are only valid if there were no later operations.
         last_event = max([self.date] + [t.date for t in self.transactions] + [m.date for m in self.cash_movements])
         if last_event > date:
             raise ValueError("Current risk metrics need a common valuation after the last movement")
@@ -422,7 +439,7 @@ class Portfolio:
         return self.asset_returns().corr()
 
     def growth(self):
-        """Indice TWR en fechas observadas; aportaciones y retiradas no son beneficios."""
+        """TWR index on observed dates; deposits and withdrawals are not gains."""
         equity = self.value().dropna()
         if equity.empty or equity.index[0] != self.date:
             raise ValueError("Growth requires an initial equity valuation")
@@ -437,6 +454,117 @@ class Portfolio:
         return factors.cumprod().rename("growth")
 
     def drawdown(self):
-        """Drawdown observado, ajustado por flujos; puede omitir caidas entre fechas."""
+        """Observed drawdown, adjusted for flows; it can miss falls between dates."""
         growth = self.growth()
         return growth / growth.cummax().clip(lower=1) - 1
+
+    def monte_carlo(
+        self,
+        n_simulations: int = 10_000,
+        years: float = 1.0,
+        *,
+        asset: str | None = None,
+        seed: int | None = None,
+    ) -> MonteCarloResult:
+        """Simulate future values with normal log returns per step.
+
+        The portfolio is simulated with its current weights held fixed (cash
+        earns 0). With asset, only that asset is simulated from its last price.
+
+        Args:
+            n_simulations: Number of simulated paths.
+            years: Horizon. Converted to steps with periods_per_year.
+            asset: Identifier of one asset, or None for the whole portfolio.
+            seed: Seed for reproducible results.
+
+        Returns:
+            Simulated paths and the parameters used to generate them.
+
+        Raises:
+            ValueError: If n_simulations or years are not positive, the asset
+                is unknown, the portfolio has no assets, there is a movement
+                after the last common price date, a historical return is
+                -100% or worse, or the horizon is shorter than one step.
+        """
+        # 1. Validate the arguments and the reference date.
+        if (
+            isinstance(n_simulations, bool)
+            or not isinstance(n_simulations, (int, np.integer))
+            or n_simulations <= 0
+        ):
+            raise ValueError(
+                f"n_simulations must be a positive integer, got {n_simulations!r}"
+            )
+        if (
+            isinstance(years, bool)
+            or not isinstance(years, (int, float, np.number))
+            or not np.isfinite(years)
+            or years <= 0
+        ):
+            raise ValueError(f"years must be positive and finite, got {years!r}")
+        if not self.assets:
+            raise ValueError("Portfolio has no assets to simulate")
+        if asset is not None and asset not in self.assets:
+            raise ValueError(
+                f"asset must be one of {sorted(self.assets)}, got {asset!r}"
+            )
+        common = self._common_closes()
+        if common.empty:
+            raise ValueError("Simulation requires a date with prices for every asset")
+        date = common.index[-1]
+        last_event = max(
+            [self.date]
+            + [t.date for t in self.transactions]
+            + [m.date for m in self.cash_movements]
+        )
+        if last_event > date:
+            raise ValueError(
+                "Simulation needs a common valuation after the last movement"
+            )
+
+        # 2. Historical simple returns of the portfolio or of the asset.
+        asset_returns = self.asset_returns()
+        if asset is None:
+            returns = asset_returns @ self.weights(date)
+        else:
+            returns = asset_returns[asset]
+
+        # 3. Log returns per step.
+        if (returns <= -1).any():
+            raise ValueError("Log returns are undefined for losses of 100% or more")
+        log_returns = np.log1p(returns)
+        mu = float(log_returns.mean())
+        sigma = float(log_returns.std())
+
+        # 4. Initial value.
+        if asset is None:
+            initial_value = float(self.value().loc[date])
+        else:
+            initial_value = float(common.loc[date, asset])
+
+        # 5. Random log returns, one row per step and one column per path.
+        periods_per_year = self.sampling_info()["periods_per_year"]
+        steps = round(years * periods_per_year)
+        if steps < 1:
+            raise ValueError(
+                f"years must cover at least one step, got {years!r} "
+                f"with {periods_per_year:.1f} steps per year"
+            )
+        rng = np.random.default_rng(seed)
+        draws = rng.normal(mu, sigma, size=(steps, n_simulations))
+
+        # 6. Value paths, with row 0 equal to the initial value.
+        cumulative = np.vstack([np.zeros((1, n_simulations)), draws.cumsum(axis=0)])
+        paths = pd.DataFrame(initial_value * np.exp(cumulative))
+        paths.index.name = "step"
+        paths.columns.name = "simulation"
+
+        # 7. Result.
+        return MonteCarloResult(
+            paths=paths,
+            target=asset or "portfolio",
+            mu=mu,
+            sigma=sigma,
+            periods_per_year=periods_per_year,
+            seed=seed,
+        )

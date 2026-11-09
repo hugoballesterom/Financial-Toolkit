@@ -124,12 +124,14 @@ class YahooFinanceAPI:
         industry=info.get('industry') or '',
         fundamentals=fundamentals)
 
-        return Stock(ticker=symbol,price=prices,company=company)
+        return Stock(ticker=symbol,price=prices,company=company,currency=info.get('currency'))
 
     def get_index(self,symbol: str,start: str = "2020-01-01",end: str = None, etf_symbol: str = None) -> Index:
 
         ticker = yf.Ticker(symbol)
 
+        # Price index (e.g. ^GSPC): no splits or dividends to adjust, but it
+        # excludes dividends, so it trails dividend-adjusted stock prices.
         prices_df = ticker.history(
             start=start,
             end=end,

@@ -9,3 +9,4 @@ class Stock:
     ticker:str
     price: PriceSeries
     company: Company
+    currency: str | None = None

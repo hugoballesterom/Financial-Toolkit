@@ -100,8 +100,9 @@ class FMPAPI:
             "to": today.isoformat()
         }
 
+        # Dividend-adjusted prices, like Yahoo's auto_adjust=True.
         response = requests.get(
-            url + "historical-price-eod/full",
+            url + "historical-price-eod/dividend-adjusted",
             params=price_params,
             timeout=30
         )
@@ -123,10 +124,10 @@ class FMPAPI:
 
         prices = PriceSeries(
             date=prices_df.index,
-            open=prices_df["open"],
-            high=prices_df["high"],
-            low=prices_df["low"],
-            close=prices_df["close"],
+            open=prices_df["adjOpen"],
+            high=prices_df["adjHigh"],
+            low=prices_df["adjLow"],
+            close=prices_df["adjClose"],
             volume=prices_df["volume"]
         )
 
@@ -277,7 +278,8 @@ class FMPAPI:
         return Stock(
             ticker=symbol,
             price=prices,
-            company=company
+            company=company,
+            currency=info.get("currency")
         )
 
     def get_index(self,symbol: str,period: str = "5y") -> Index:
@@ -302,6 +304,8 @@ class FMPAPI:
             "apikey": self.api_key
         }
 
+        # Price index: no splits or dividends to adjust, but it excludes
+        # dividends, so it trails dividend-adjusted stock prices.
         response = requests.get(
             base_url + "historical-price-eod/full",
             params=params,
