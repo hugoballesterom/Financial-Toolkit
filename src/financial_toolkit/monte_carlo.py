@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.ticker import PercentFormatter
 
 
 def _check_level(level: float) -> float:
@@ -118,3 +120,58 @@ class MonteCarloResult:
             data[f'cvar_{label}'] = self.cvar(level)
         data['loss_probability'] = self.loss_probability()
         return data
+
+    def plot(self, n_paths: int = 100, level: float = 0.95) -> np.ndarray:
+        """Simulated paths and distribution of the final return.
+
+        Left: a sample of paths with the median and the 5-95 percentile band.
+        Right: histogram of the final return with the mean, VaR and CVaR.
+
+        Args:
+            n_paths: Number of paths drawn on the left (the first ones).
+            level: Confidence level of the VaR and CVaR lines.
+
+        Returns:
+            The two matplotlib axes. In a script call plt.show() to see them.
+        """
+        if (
+            isinstance(n_paths, bool)
+            or not isinstance(n_paths, (int, np.integer))
+            or n_paths <= 0
+        ):
+            raise ValueError(f"n_paths must be a positive integer, got {n_paths!r}")
+        _check_level(level)
+
+        fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
+        years = self.paths.index / self.periods_per_year
+
+        # 1. Paths and percentile band.
+        ax = axes[0]
+        ax.plot(years, self.paths.iloc[:, :n_paths], color='tab:blue', alpha=0.15, lw=0.8)
+        bands = self.paths.quantile([0.05, 0.5, 0.95], axis=1).T
+        ax.fill_between(years, bands[0.05], bands[0.95], color='tab:blue', alpha=0.15,
+                        label='5-95 percentile')
+        ax.plot(years, bands[0.5], color='black', lw=1.5, label='Median')
+        ax.axhline(self.initial_value, color='grey', ls='--', lw=1)
+        ax.set_title(f"Simulated values: {self.target} ({self.paths.shape[1]:,} paths)")
+        ax.set_xlabel('Years')
+        ax.set_ylabel('Value')
+        ax.legend(loc='upper left')
+
+        # 2. Distribution of the final return.
+        ax = axes[1]
+        label = f"{level * 100:g}%"
+        ax.hist(self.final_returns, bins=60, color='tab:blue', alpha=0.7)
+        ax.axvline(self.mean(), color='black', lw=1.5, label=f"Mean {self.mean():.1%}")
+        ax.axvline(-self.var(level), color='tab:orange', lw=1.5,
+                   label=f"VaR {label} {self.var(level):.1%}")
+        ax.axvline(-self.cvar(level), color='tab:red', lw=1.5,
+                   label=f"CVaR {label} {self.cvar(level):.1%}")
+        ax.xaxis.set_major_formatter(PercentFormatter(1))
+        ax.set_title('Final return')
+        ax.set_xlabel('Return over the horizon')
+        ax.set_ylabel('Simulations')
+        ax.legend()
+
+        fig.tight_layout()
+        return axes
