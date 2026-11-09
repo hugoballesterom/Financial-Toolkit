@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict
-from cashflow import CashFlow
+from .cashflow import CashFlow
 
 import pandas as pd
 import numpy as np

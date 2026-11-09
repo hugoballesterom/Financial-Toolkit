@@ -11,11 +11,11 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from cash_movement import CashMovement
-from cryptocurrency import Cryptocurrency
-from monte_carlo import MonteCarloResult
-from position import Position
-from transaction import ALLOWED_TYPES, Transaction
+from .cash_movement import CashMovement
+from .cryptocurrency import Cryptocurrency
+from .monte_carlo import MonteCarloResult
+from .position import Position
+from .transaction import ALLOWED_TYPES, Transaction
 
 
 def _date(value):

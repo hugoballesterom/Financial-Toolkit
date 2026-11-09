@@ -4,10 +4,10 @@ from typing import Literal
 
 import pandas as pd
 
-from stock import Stock
-from index import Index
-from bond import Bond
-from cryptocurrency import Cryptocurrency
+from .stock import Stock
+from .index import Index
+from .bond import Bond
+from .cryptocurrency import Cryptocurrency
 
 
 Asset = Stock | Index | Bond | Cryptocurrency

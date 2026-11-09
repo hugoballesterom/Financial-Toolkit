@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from fundamentals import Fundamentals
+from .fundamentals import Fundamentals
 
 
 @dataclass

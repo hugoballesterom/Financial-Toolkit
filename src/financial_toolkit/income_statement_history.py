@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict
-from income_statement import IncomeStatement
+from .income_statement import IncomeStatement
 import pandas as pd
 import numpy as np
 

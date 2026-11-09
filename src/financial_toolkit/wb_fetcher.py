@@ -4,10 +4,10 @@ from typing import Any, ClassVar
 import pandas as pd
 import requests
 
-from models.base_macro_fetcher import BaseMacroFetcher
-from models.enums import Frequency
-from models.exceptions import RateLimitError
-from models.macro_series import MacroSeries
+from .base_macro_fetcher import BaseMacroFetcher
+from .enums import Frequency
+from .exceptions import RateLimitError
+from .macro_series import MacroSeries
 
 
 class WorldBankFetcher(BaseMacroFetcher):

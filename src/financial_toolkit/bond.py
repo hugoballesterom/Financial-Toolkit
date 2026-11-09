@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from bondseries import BondSeries
+from .bondseries import BondSeries
 
 
 @dataclass

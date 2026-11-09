@@ -6,17 +6,17 @@ import math
 import pandas as pd
 import yfinance as yf
 
-from index import Index
-from priceseries import PriceSeries
-from stock import Stock
-from company import Company
-from fundamentals import Fundamentals
-from income_statement import IncomeStatement
-from income_statement_history import IncomeStatementHistory
-from balance_sheet import BalanceSheet
-from balance_sheet_history import BalanceSheetHistory
-from cashflow import CashFlow
-from cashflow_history import CashFlowHistory
+from .index import Index
+from .priceseries import PriceSeries
+from .stock import Stock
+from .company import Company
+from .fundamentals import Fundamentals
+from .income_statement import IncomeStatement
+from .income_statement_history import IncomeStatementHistory
+from .balance_sheet import BalanceSheet
+from .balance_sheet_history import BalanceSheetHistory
+from .cashflow import CashFlow
+from .cashflow_history import CashFlowHistory
 
 income = [
     "Total Revenue",

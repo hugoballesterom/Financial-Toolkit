@@ -9,11 +9,11 @@ import pandas as pd
 from dotenv import load_dotenv
 from fredapi import Fred
 
-from models.base_macro_fetcher import BaseMacroFetcher
-from models.enums import Frequency
-from models.exceptions import RateLimitError
-from models.macro_releases import MacroReleases
-from models.macro_series import MacroSeries
+from .base_macro_fetcher import BaseMacroFetcher
+from .enums import Frequency
+from .exceptions import RateLimitError
+from .macro_releases import MacroReleases
+from .macro_series import MacroSeries
 
 
 class FREDFetcher(BaseMacroFetcher):

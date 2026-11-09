@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 import pandas as pd
-from company import Company
-from priceseries import PriceSeries
+from .company import Company
+from .priceseries import PriceSeries
 
 
 @dataclass

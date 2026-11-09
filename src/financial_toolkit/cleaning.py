@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 import pandas as pd
 
-from priceseries import PriceSeries
+from .priceseries import PriceSeries
 
 # Same threshold as BondNormalizer.MAX_MISSING_RATIO.
 MAX_MISSING_RATIO = 0.05

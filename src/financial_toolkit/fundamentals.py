@@ -1,9 +1,9 @@
 from dataclasses import dataclass, field
 import pandas as pd
 
-from income_statement_history import IncomeStatementHistory
-from balance_sheet_history import BalanceSheetHistory
-from cashflow_history import CashFlowHistory
+from .income_statement_history import IncomeStatementHistory
+from .balance_sheet_history import BalanceSheetHistory
+from .cashflow_history import CashFlowHistory
 
 
 @dataclass

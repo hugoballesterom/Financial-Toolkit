@@ -4,8 +4,8 @@ import logging
 import math
 import pandas as pd
 import yfinance as yf
-from priceseries import PriceSeries
-from tokenomics import Tokenomics
+from .priceseries import PriceSeries
+from .tokenomics import Tokenomics
 from typing import Optional
 
 @dataclass

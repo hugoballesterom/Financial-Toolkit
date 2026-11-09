@@ -6,8 +6,8 @@ from collections.abc import Callable, Iterable
 from datetime import datetime
 from typing import Any, ClassVar
 
-from models.macro_releases import MacroReleases
-from models.macro_series import MacroSeries
+from .macro_releases import MacroReleases
+from .macro_series import MacroSeries
 
 
 class BaseMacroFetcher(ABC):

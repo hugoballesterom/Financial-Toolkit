@@ -9,8 +9,8 @@ from pandas.api.types import (
     is_string_dtype,
 )
 
-from models.enums import Frequency
-from models.macro_series import MacroSeries, parse_release
+from .enums import Frequency
+from .macro_series import MacroSeries, parse_release
 
 
 @dataclass(kw_only=True)

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Optional
 import pandas as pd
 
-from priceseries import PriceSeries
+from .priceseries import PriceSeries
 
 
 @dataclass

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from math import isfinite
 
-from transaction import Asset, ALLOWED_TYPES, Transaction
+from .transaction import Asset, ALLOWED_TYPES, Transaction
 
 
 @dataclass

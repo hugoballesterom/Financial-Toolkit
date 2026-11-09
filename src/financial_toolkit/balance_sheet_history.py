@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict
-from balance_sheet import BalanceSheet
+from .balance_sheet import BalanceSheet
 
 import pandas as pd
 import numpy as np
