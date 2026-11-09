@@ -11,7 +11,7 @@ From 2023-01-03 to 2025-10-31 · USD · 4 assets
 | Total return (TWR) | 238.28% |
 | Annual expected return | 53.87% |
 | Annual volatility | 24.64% |
-| Sharpe ratio | 2.19 |
+| Sharpe ratio | 2.03 |
 | Max drawdown | -21.56% |
 | Cash | 0.00 |
 | Cash weight | 0.00% |
