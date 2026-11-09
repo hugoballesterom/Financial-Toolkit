@@ -21,7 +21,7 @@ touching the core.
 | Cleaning | Missing values, duplicates, time zones and outliers, with a `CleaningReport` per asset |
 | Price series | `PriceSeries` dataclass with mean, volatility and annualized statistics computed on creation, plus returns, drawdown, SMA, EMA, MACD, RSI and Bollinger bands |
 | Portfolio | Long/short positions, transactions, deposits and withdrawals, rebalancing, value, weights, returns, volatility, Sharpe, correlations and drawdown |
-| Monte Carlo | Parametrizable simulation of the portfolio or of one asset, with VaR, CVaR and a plot of paths and distribution |
+| Monte Carlo | Simulation of the portfolio or of one asset with configurable simulations, horizon, return and volatility (historical by default), with VaR, CVaR and a plot of paths and distribution |
 | Reports | `Portfolio.report()` in Markdown and `Portfolio.plots_report()` with six analytical charts |
 
 ## Project structure
@@ -175,6 +175,9 @@ simulation.summary()        # mean, median, VaR, CVaR, loss probability
 simulation.plot()
 
 single = portfolio.monte_carlo(5_000, years=1, asset="BTC-USD")
+
+# Own assumptions instead of the historical estimates (annual, log returns).
+stressed = portfolio.monte_carlo(10_000, years=5, annual_return=0.03, annual_volatility=0.35)
 
 # Markdown report (returned as text and optionally saved) and plots.
 text = portfolio.report(

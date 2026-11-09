@@ -481,25 +481,34 @@ class Portfolio:
         years: float = 1.0,
         *,
         asset: str | None = None,
+        annual_return: float | None = None,
+        annual_volatility: float | None = None,
         seed: int | None = None,
     ) -> MonteCarloResult:
         """Simulate future values with normal log returns per step.
 
         The portfolio is simulated with its current weights held fixed (cash
         earns 0). With asset, only that asset is simulated from its last price.
+        By default the mean and volatility are estimated from the history;
+        annual_return and annual_volatility replace them with assumptions.
 
         Args:
             n_simulations: Number of simulated paths.
             years: Horizon. Converted to steps with periods_per_year.
             asset: Identifier of one asset, or None for the whole portfolio.
+            annual_return: Assumed annual mean log return, e.g. 0.07, or None
+                for the historical one.
+            annual_volatility: Assumed annual volatility of the log returns,
+                e.g. 0.2, or None for the historical one.
             seed: Seed for reproducible results.
 
         Returns:
             Simulated paths and the parameters used to generate them.
 
         Raises:
-            ValueError: If n_simulations or years are not positive, the asset
-                is unknown, the portfolio has no assets, there is a movement
+            ValueError: If n_simulations or years are not positive, the
+                assumptions are not finite or the volatility is negative, the
+                asset is unknown, the portfolio has no assets, there is a movement
                 after the last common price date, a historical return is
                 -100% or worse, or the horizon is shorter than one step.
         """
@@ -519,6 +528,20 @@ class Portfolio:
             or years <= 0
         ):
             raise ValueError(f"years must be positive and finite, got {years!r}")
+        for name, value in (
+            ("annual_return", annual_return),
+            ("annual_volatility", annual_volatility),
+        ):
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float, np.number))
+                or not np.isfinite(value)
+            ):
+                raise ValueError(f"{name} must be a finite number, got {value!r}")
+        if annual_volatility is not None and annual_volatility < 0:
+            raise ValueError(
+                f"annual_volatility must be non-negative, got {annual_volatility!r}"
+            )
         if not self.assets:
             raise ValueError("Portfolio has no assets to simulate")
         if asset is not None and asset not in self.assets:
@@ -561,6 +584,11 @@ class Portfolio:
 
         # 5. Random log returns, one row per step and one column per path.
         periods_per_year = self.sampling_info()["periods_per_year"]
+        # Assumptions given by the user replace the historical estimates.
+        if annual_return is not None:
+            mu = float(annual_return) / periods_per_year
+        if annual_volatility is not None:
+            sigma = float(annual_volatility) / np.sqrt(periods_per_year)
         steps = round(years * periods_per_year)
         if steps < 1:
             raise ValueError(
