@@ -15,32 +15,32 @@ class UKBondAPI:
 
         if ticker not in self.SERIES_MAP:
             raise ValueError(
-                f"Referencia no admitida: {ticker}. "
-                f"Disponibles: {', '.join(self.SERIES_MAP)}"
+                f"Unsupported reference: {ticker}. "
+                f"Available: {', '.join(self.SERIES_MAP)}"
             )
 
-        inicio = pd.Timestamp(start_date).normalize()
-        fin = pd.Timestamp(end_date).normalize()
+        start = pd.Timestamp(start_date).normalize()
+        end = pd.Timestamp(end_date).normalize()
 
-        if pd.isna(inicio) or pd.isna(fin) or inicio > fin:
-            raise ValueError("Intervalo de fechas no válido.")
+        if pd.isna(start) or pd.isna(end) or start > end:
+            raise ValueError("Invalid date interval.")
 
-        # El servicio necesita los meses escritos en inglés.
-        meses = (
+        # The service needs the months written in English.
+        months = (
             "Jan", "Feb", "Mar", "Apr", "May", "Jun",
             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
         )
 
-        fecha_inicio = (
-            f"{inicio.day:02d}/"
-            f"{meses[inicio.month - 1]}/"
-            f"{inicio.year}"
+        start_text = (
+            f"{start.day:02d}/"
+            f"{months[start.month - 1]}/"
+            f"{start.year}"
         )
 
-        fecha_fin = (
-            f"{fin.day:02d}/"
-            f"{meses[fin.month - 1]}/"
-            f"{fin.year}"
+        end_text = (
+            f"{end.day:02d}/"
+            f"{months[end.month - 1]}/"
+            f"{end.year}"
         )
 
         url = (
@@ -52,8 +52,8 @@ class UKBondAPI:
             url,
             params={
                 "csv.x": "yes",
-                "Datefrom": fecha_inicio,
-                "Dateto": fecha_fin,
+                "Datefrom": start_text,
+                "Dateto": end_text,
                 "SeriesCodes": self.SERIES_MAP[ticker],
                 "CSVF": "TN",
                 "UsingCodes": "Y",
@@ -75,8 +75,8 @@ class UKBondAPI:
 
         if response.text.lstrip().startswith("<"):
             raise ValueError(
-                "La fuente devolvió HTML o XML "
-                "en lugar del CSV."
+                "The source returned HTML or XML "
+                "instead of the CSV."
             )
 
         return response.text

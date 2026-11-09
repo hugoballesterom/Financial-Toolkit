@@ -35,11 +35,11 @@ class AssetFetcher:
         default_factory=BondNormalizer
     )
 
-    # Informe de limpieza de la última llamada a get_many, por símbolo.
+    # Cleaning report of the last call to get_many, by symbol.
     cleaning_reports: dict = field(default_factory=dict, init=False)
 
-    def get_many(self, solicitudes, *, start, end):
-        """recibe la lista, elige el buscador de cada activo y reúne los resultados. Este es el comportamiento que queremos de AssetFetcher."""
+    def get_many(self, requests, *, start, end):
+        """receives the list, picks the fetcher of each asset and gathers the results. This is the behaviour we want from AssetFetcher."""
         start = pd.Timestamp(start)
         end = pd.Timestamp(end)
         today = pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
@@ -50,17 +50,17 @@ class AssetFetcher:
             or start.tzinfo is not None
             or end.tzinfo is not None
         ):
-            raise ValueError("Usa fechas válidas sin zona horaria")
+            raise ValueError("Use valid dates without a timezone")
 
         start = start.normalize()
         end = end.normalize()
 
         if start > end or end > today:
             raise ValueError(
-                "Debe cumplirse start <= end y end no puede ser futura"
+                "start must be <= end and end cannot be in the future"
             )
 
-        extractores = {
+        fetchers = {
             ("stock", "yfinance"): self.yahoo.get_stock,
             ("index", "yfinance"): self.yahoo.get_index,
             ("stock", "fmp"): self.fmp.get_stock,
@@ -72,64 +72,64 @@ class AssetFetcher:
             ("bond", "uk"): self.uk.get_data,
         }
 
-        activos = []
+        assets = []
         self.cleaning_reports = {}
 
-        for solicitud in solicitudes:
-            tipo = solicitud["type"].strip().lower()
-            api = solicitud["api"].strip().lower()
-            symbol = solicitud["symbol"].strip()
-            clave = (tipo, api)
+        for request in requests:
+            kind = request["type"].strip().lower()
+            api = request["api"].strip().lower()
+            symbol = request["symbol"].strip()
+            key = (kind, api)
 
-            if clave not in extractores:
-                raise ValueError(f"Combinación no admitida: {clave}")
+            if key not in fetchers:
+                raise ValueError(f"Unsupported combination: {key}")
 
             if api == "fmp" and not self.fmp.api_key:
-                raise ValueError("Falta FMP_API_KEY")
+                raise ValueError("FMP_API_KEY is missing")
 
-            parametros = self._parametros(
-                tipo, api, symbol, start, end, today
+            parameters = self._parameters(
+                kind, api, symbol, start, end, today
             )
 
-            opciones = solicitud.get("params", {})
-            if not isinstance(opciones, dict):
-                raise ValueError("params debe ser un diccionario")
+            options = request.get("params", {})
+            if not isinstance(options, dict):
+                raise ValueError("params must be a dictionary")
 
-            reservados = {
+            reserved = {
                 "start", "end", "start_date", "end_date",
                 "period", "days", "ticker", "symbol", "coin_id",
             }
 
-            if reservados.intersection(opciones):
+            if reserved.intersection(options):
                 raise ValueError(
-                    "Indica el activo en symbol y el periodo "
-                    "en start/end de get_many()"
+                    "Give the asset in symbol and the period "
+                    "in start/end of get_many()"
                 )
 
-            activo = extractores[clave](**parametros, **opciones)
+            asset = fetchers[key](**parameters, **options)
 
-            if tipo == "bond":
-                activo = self.bond_normalizer.normalize(
-                    data=activo,
+            if kind == "bond":
+                asset = self.bond_normalizer.normalize(
+                    data=asset,
                     ticker=symbol,
                     source=api,
                     start_date=start,
                     end_date=end,
                 )
             else:
-                activo = self._recortar(activo, start, end)
-                precios, informe = clean_prices(activo.price)
-                activo = replace(activo, price=precios)
-                self.cleaning_reports[symbol] = informe
+                asset = self._trim(asset, start, end)
+                prices, report = clean_prices(asset.price)
+                asset = replace(asset, price=prices)
+                self.cleaning_reports[symbol] = report
 
-            activos.append(activo)
+            assets.append(asset)
 
-        return activos
+        return assets
 
     @staticmethod
-    def _parametros(tipo, api, symbol, start, end, today):
-        """traduce las fechas porque nuestros buscadores usan argumentos distintos: period, start/end o days."""
-        if tipo == "bond":
+    def _parameters(kind, api, symbol, start, end, today):
+        """translates the dates because our fetchers use different arguments: period, start/end or days."""
+        if kind == "bond":
             return {
                 "ticker": symbol,
                 "start_date": start.strftime("%Y-%m-%d"),
@@ -137,70 +137,70 @@ class AssetFetcher:
             }
 
         if api == "coingecko":
-            necesarios = (today - start).days + 1
+            needed = (today - start).days + 1
 
-            dias = next(
+            days = next(
                 (
-                    ventana
-                    for ventana in (1, 7, 14, 30, 90, 180, 365)
-                    if ventana >= necesarios
+                    window
+                    for window in (1, 7, 14, 30, 90, 180, 365)
+                    if window >= needed
                 ),
                 None,
             )
 
-            if dias is None:
+            if days is None:
                 raise ValueError(
-                    "El extractor actual de CoinGecko no cubre "
-                    "el inicio solicitado"
+                    "The current CoinGecko fetcher does not cover "
+                    "the requested start"
                 )
 
-            return {"coin_id": symbol, "days": dias}
+            return {"coin_id": symbol, "days": days}
 
-        if api == "yfinance" and tipo == "index":
+        if api == "yfinance" and kind == "index":
             return {
                 "symbol": symbol,
                 "start": start.strftime("%Y-%m-%d"),
-                # Yahoo interpreta end como exclusivo.
+                # Yahoo treats end as exclusive.
                 "end": (
                     end + pd.Timedelta(days=1)
                 ).strftime("%Y-%m-%d"),
             }
 
-        # Los métodos restantes reciben un periodo en años.
+        # The remaining methods take a period in years.
         years = max(1, today.year - start.year + 1)
-        identificador = "ticker" if tipo == "stock" else "symbol"
+        identifier = "ticker" if kind == "stock" else "symbol"
 
         return {
-            identificador: symbol,
+            identifier: symbol,
             "period": f"{years}y",
         }
 
     @staticmethod
-    def _recortar(activo, start, end):
-        """limita los precios al intervalo elegido, porque algunos buscadores descargan un periodo más amplio.."""
-        precios = activo.price
-        indice = pd.DatetimeIndex(precios.close.index)
-        fechas = indice.tz_localize(None).normalize()
-        seleccion = (fechas >= start) & (fechas <= end)
+    def _trim(asset, start, end):
+        """limits the prices to the chosen interval, because some fetchers download a wider period."""
+        prices = asset.price
+        index = pd.DatetimeIndex(prices.close.index)
+        dates = index.tz_localize(None).normalize()
+        selection = (dates >= start) & (dates <= end)
 
-        if not seleccion.any():
+        if not selection.any():
             raise ValueError(
-                "No hay precios dentro del periodo solicitado"
+                "No prices within the requested period"
             )
 
-        campos = {
-            nombre: (
+        columns = {
+            name: (
                 None
-                if getattr(precios, nombre) is None
-                else getattr(precios, nombre).iloc[seleccion].copy()
+                if getattr(prices, name) is None
+                else getattr(prices, name).iloc[selection].copy()
             )
-            for nombre in ("open", "high", "low", "close", "volume")
+            for name in ("open", "high", "low", "close", "volume")
         }
 
-        precios_recortados = replace(
-            precios,
-            date=indice[seleccion],
-            **campos,
+        trimmed_prices = replace(
+            prices,
+            date=index[selection],
+            **columns,
         )
 
-        return replace(activo, price=precios_recortados)
+        return replace(asset, price=trimmed_prices)

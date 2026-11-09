@@ -6,7 +6,7 @@ import pandas as pd
 @dataclass
 class BondSeries:
     date: pd.DatetimeIndex
-    ytm: pd.Series  # Porcentaje: 4.5 significa 4,5 %.
+    ytm: pd.Series  # Percentage: 4.5 means 4.5 %.
 
     def current_yield(self):
         return self.ytm.iloc[-1]
@@ -21,13 +21,13 @@ class BondSeries:
         return self.ytm.min()
     
     def yield_mean(self):
-        """Rentabilidad media del intervalo, en porcentaje."""
+        """Mean yield of the interval, in percent."""
         return self.ytm.mean()
 
     def yield_change_total_bps(self):
-        """Cambio entre la última y la primera rentabilidad, en puntos básicos."""
+        """Change between the last and the first yield, in basis points."""
         return (self.ytm.iloc[-1] - self.ytm.iloc[0]) * 100
 
     def yield_volatility(self):
-        """Desviación estándar muestral de las rentabilidades, en puntos porcentuales."""
+        """Sample standard deviation of the yields, in percentage points."""
         return self.ytm.std()

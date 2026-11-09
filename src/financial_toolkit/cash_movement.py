@@ -1,4 +1,4 @@
-"""Aportaciones y retiradas externas; no son operaciones de mercado."""
+"""External deposits and withdrawals; they are not market trades."""
 from dataclasses import dataclass
 from datetime import date as Date, datetime
 from math import isfinite

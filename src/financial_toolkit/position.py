@@ -51,7 +51,7 @@ class Position:
             self.average_price = 0.0
 
     def update_price(self, price):
-        """Actualiza la valoración sin registrar una operación."""
+        """Updates the valuation without recording a trade."""
         if isinstance(price, bool):
             raise ValueError("Price must be positive and finite")
 
@@ -63,7 +63,7 @@ class Position:
         self.current_price = price
 
     def apply_transaction(self, transaction: Transaction):
-        """Actualiza unidades, coste medio y beneficio realizado."""
+        """Updates units, average cost and realized profit."""
         if not isinstance(transaction, Transaction):
             raise TypeError("Expected a Transaction")
 
@@ -89,18 +89,18 @@ class Position:
         new_quantity = previous_quantity + change
 
         if previous_quantity == 0:
-            # Apertura de una posición larga o corta.
+            # Opening of a long or short position.
             self.average_price = transaction.price
 
         elif (previous_quantity > 0) == (change > 0):
-            # Aumento de una posición existente.
+            # Increase of an existing position.
             self.average_price = (
                 abs(previous_quantity) * self.average_price
                 + abs(change) * transaction.price
             ) / abs(new_quantity)
 
         else:
-            # Reducción, cierre o cambio de dirección.
+            # Reduction, close or change of direction.
             closed_quantity = min(
                 abs(previous_quantity), abs(change)
             )
@@ -115,7 +115,7 @@ class Position:
             if new_quantity == 0:
                 self.average_price = 0.0
             elif (new_quantity > 0) != (previous_quantity > 0):
-                # Se cerró la posición y se abrió otra contraria.
+                # The position was closed and an opposite one opened.
                 self.average_price = transaction.price
 
         self.quantity = new_quantity
@@ -123,17 +123,17 @@ class Position:
 
     @property
     def invested_value(self) -> float:
-        """Importe absoluto de entrada de la posición abierta."""
+        """Absolute entry amount of the open position."""
         return abs(self.quantity) * self.average_price
 
     @property
     def market_value(self) -> float:
-        """Valor firmado: negativo para una posición corta."""
+        """Signed value: negative for a short position."""
         return self.quantity * self.current_price
 
     @property
     def unrealized_pnl(self) -> float:
-        """Ganancia o pérdida de la posición todavía abierta."""
+        """Profit or loss of the position still open."""
         return self.quantity * (
             self.current_price - self.average_price
         )

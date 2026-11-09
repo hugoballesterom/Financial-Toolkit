@@ -27,17 +27,17 @@ class JapanBondAPI:
 
         if ticker not in self.SERIES_MAP:
             raise ValueError(
-                f"Referencia no admitida: {ticker}. "
-                f"Disponibles: {', '.join(self.SERIES_MAP)}"
+                f"Unsupported reference: {ticker}. "
+                f"Available: {', '.join(self.SERIES_MAP)}"
             )
 
-        inicio = pd.Timestamp(start_date).normalize()
-        fin = pd.Timestamp(end_date).normalize()
+        start = pd.Timestamp(start_date).normalize()
+        end = pd.Timestamp(end_date).normalize()
 
-        if pd.isna(inicio) or pd.isna(fin) or inicio > fin:
-            raise ValueError("Intervalo de fechas no válido.")
+        if pd.isna(start) or pd.isna(end) or start > end:
+            raise ValueError("Invalid date interval.")
 
-        # Esta fuente entrega todos los plazos y todo el histórico.
+        # This source returns every maturity and the whole history.
         url = (
             "https://www.mof.go.jp/english/policy/jgbs/reference/"
             "interest_rate/historical/jgbcme_all.csv"
@@ -57,8 +57,8 @@ class JapanBondAPI:
 
         if response.text.lstrip().startswith("<"):
             raise ValueError(
-                "La fuente devolvió HTML o XML "
-                "en lugar del CSV."
+                "The source returned HTML or XML "
+                "instead of the CSV."
             )
 
         return response.text

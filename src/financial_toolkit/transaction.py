@@ -70,12 +70,12 @@ class Transaction:
 
     @property
     def total_value(self) -> float:
-        """Importe de la operación, siempre positivo."""
+        """Amount of the trade, always positive."""
         return self.quantity * self.price
 
     @property
     def signed_quantity(self) -> float:
-        """Cambio en las unidades mantenidas."""
+        """Change in the units held."""
         if self.transaction_type == "BUY":
             return self.quantity
 
@@ -83,7 +83,7 @@ class Transaction:
 
     @property
     def cash_flow(self) -> float:
-        """Cambio en efectivo, sin comisiones."""
+        """Change in cash, without fees."""
         if self.transaction_type == "BUY":
             return -self.total_value
 

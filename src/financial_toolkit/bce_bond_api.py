@@ -23,28 +23,28 @@ class BCEBondAPI:
 
         if ticker not in self.SERIES_MAP:
             raise ValueError(
-                f"Referencia no admitida: {ticker}. "
-                f"Disponibles: {', '.join(self.SERIES_MAP)}"
+                f"Unsupported reference: {ticker}. "
+                f"Available: {', '.join(self.SERIES_MAP)}"
             )
 
-        inicio = pd.Timestamp(start_date).normalize()
-        fin = pd.Timestamp(end_date).normalize()
+        start = pd.Timestamp(start_date).normalize()
+        end = pd.Timestamp(end_date).normalize()
 
-        if pd.isna(inicio) or pd.isna(fin) or inicio > fin:
-            raise ValueError("Intervalo de fechas no válido.")
+        if pd.isna(start) or pd.isna(end) or start > end:
+            raise ValueError("Invalid date interval.")
 
-        clave = self.SERIES_MAP[ticker]
+        key = self.SERIES_MAP[ticker]
 
         url = (
             "https://data-api.ecb.europa.eu/"
-            f"service/data/YC/{clave}"
+            f"service/data/YC/{key}"
         )
 
         response = requests.get(
             url,
             params={
-                "startPeriod": inicio.strftime("%Y-%m-%d"),
-                "endPeriod": fin.strftime("%Y-%m-%d"),
+                "startPeriod": start.strftime("%Y-%m-%d"),
+                "endPeriod": end.strftime("%Y-%m-%d"),
                 "format": "csvdata",
             },
             timeout=60,
@@ -59,8 +59,8 @@ class BCEBondAPI:
 
         if response.text.lstrip().startswith("<"):
             raise ValueError(
-                "La fuente devolvió HTML o XML "
-                "en lugar del CSV."
+                "The source returned HTML or XML "
+                "instead of the CSV."
             )
 
         return response.text

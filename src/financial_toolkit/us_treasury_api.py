@@ -25,25 +25,25 @@ class USTreasuryAPI:
 
         if ticker not in self.SERIES_MAP:
             raise ValueError(
-                f"Referencia no admitida: {ticker}. "
-                f"Disponibles: {', '.join(self.SERIES_MAP)}"
+                f"Unsupported reference: {ticker}. "
+                f"Available: {', '.join(self.SERIES_MAP)}"
             )
 
-        inicio = pd.Timestamp(start_date).normalize()
-        fin = pd.Timestamp(end_date).normalize()
+        start = pd.Timestamp(start_date).normalize()
+        end = pd.Timestamp(end_date).normalize()
 
-        if pd.isna(inicio) or pd.isna(fin) or inicio > fin:
-            raise ValueError("Intervalo de fechas no válido.")
+        if pd.isna(start) or pd.isna(end) or start > end:
+            raise ValueError("Invalid date interval.")
 
         url = (
             "https://home.treasury.gov/resource-center/"
             "data-chart-center/interest-rates/pages/xml"
         )
 
-        respuestas = []
+        responses = []
 
-        # Esta fuente entrega un XML por año con todos los plazos.
-        for year in range(inicio.year, fin.year + 1):
+        # This source returns one XML per year with every maturity.
+        for year in range(start.year, end.year + 1):
             response = requests.get(
                 url,
                 params={
@@ -56,6 +56,6 @@ class USTreasuryAPI:
             response.raise_for_status()
 
             if response.status_code != 204 and response.content.strip():
-                respuestas.append(response.content)
+                responses.append(response.content)
 
-        return respuestas
+        return responses
