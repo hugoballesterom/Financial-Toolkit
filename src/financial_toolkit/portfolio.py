@@ -9,9 +9,12 @@ from dataclasses import dataclass, field, replace
 from datetime import date as Date
 from datetime import datetime
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.ticker import PercentFormatter
 from .cash_movement import CashMovement
+from .cleaning import OUTLIER_STD, find_outliers
 from .cryptocurrency import Cryptocurrency
 from .monte_carlo import MonteCarloResult
 from .position import Position
@@ -81,6 +84,20 @@ def _check_weights(assets, weights):
         raise ValueError("Weights must be finite numbers")
     # No sum constraint: the residual is cash, possibly negative.
     return assets, dict(zip(ids, values))
+
+
+def _markdown_table(frame):
+    """Markdown table of a DataFrame whose values are already formatted."""
+    header = "| " + " | ".join([frame.index.name or ""] + list(frame.columns)) + " |"
+    separator = "|" + "---|" * (len(frame.columns) + 1)
+    rows = [
+        "| " + " | ".join([str(index)] + [str(value) for value in row]) + " |"
+        for index, row in zip(frame.index, frame.to_numpy())
+    ]
+    return "\n".join([header, separator, *rows])
+
+
+REPORT_SECTIONS = ("summary", "assets", "monte_carlo", "warnings")
 
 
 @dataclass
@@ -568,3 +585,286 @@ class Portfolio:
             periods_per_year=periods_per_year,
             seed=seed,
         )
+
+    def report(
+        self,
+        sections=REPORT_SECTIONS,
+        *,
+        risk_free=0,
+        periods=None,
+        monte_carlo=None,
+        max_weight=0.4,
+        max_correlation=0.8,
+        max_drawdown=-0.2,
+        min_observations=60,
+        path=None,
+    ):
+        """Markdown report with key metrics, diagnostics and risk warnings.
+
+        Args:
+            sections: Sections to include, in order, from REPORT_SECTIONS.
+            risk_free: Annual risk-free rate for the Sharpe ratio.
+            periods: Observations per year; None uses the observed frequency.
+            monte_carlo: Result of monte_carlo() to summarize, or None.
+            max_weight: Absolute weight above which an asset is a
+                concentration warning.
+            max_correlation: Correlation above which a pair of assets is a
+                diversification warning.
+            max_drawdown: Drawdown below which the portfolio gets a warning.
+            min_observations: Common return observations below which the
+                metrics get a warning.
+            path: File where the report is also saved, or None.
+
+        Returns:
+            The report as Markdown text.
+
+        Raises:
+            ValueError: If a section is unknown or monte_carlo is requested
+                without a result.
+        """
+        unknown = set(sections) - set(REPORT_SECTIONS)
+        if unknown:
+            raise ValueError(
+                f"sections must be in {REPORT_SECTIONS}, got {sorted(unknown)}"
+            )
+        if monte_carlo is not None and not isinstance(monte_carlo, MonteCarloResult):
+            raise ValueError(
+                f"monte_carlo must be a MonteCarloResult, got {type(monte_carlo).__name__}"
+            )
+
+        warnings = []
+
+        def metric(function, text):
+            # A metric that cannot be computed is reported, not raised.
+            try:
+                return text.format(function())
+            except ValueError as error:
+                warnings.append(f"Metric not available: {error}.")
+                return "n/a"
+
+        common = self._common_closes()
+        date = common.index[-1] if not common.empty else self.date
+        lines = [
+            "# Portfolio report",
+            "",
+            f"From {self.date.date()} to {date.date()} · {self.currency} · "
+            f"{len(self.assets)} assets",
+        ]
+
+        for section in sections:
+            # 1. Portfolio metrics.
+            if section == "summary":
+                rows = {
+                    "Equity": metric(lambda: self.value().loc[date], "{:,.2f}"),
+                    "Initial capital": f"{self.capital:,.2f}",
+                    "Total return (TWR)": metric(lambda: self.growth().iloc[-1] - 1, "{:.2%}"),
+                    "Annual expected return": metric(
+                        lambda: self.expected_return(periods), "{:.2%}"),
+                    "Annual volatility": metric(lambda: self.volatility(periods), "{:.2%}"),
+                    "Sharpe ratio": metric(lambda: self.sharpe(risk_free, periods), "{:.2f}"),
+                    "Max drawdown": metric(lambda: self.drawdown().min(), "{:.2%}"),
+                    "Cash": f"{self.cash:,.2f}",
+                    "Cash weight": metric(lambda: self.cash_weight(date), "{:.2%}"),
+                    "Gross exposure": metric(lambda: self.gross_exposure(date), "{:.2%}"),
+                    "Net exposure": metric(lambda: self.net_exposure(date), "{:.2%}"),
+                    "Return observations": metric(
+                        lambda: self.sampling_info()["return_observations"], "{:,}"),
+                }
+                table = pd.DataFrame({"Value": rows})
+                table.index.name = "Metric"
+                lines += ["", "## Summary", "", _markdown_table(table)]
+
+            # 2. Metrics per asset, from the statistics of each PriceSeries.
+            elif section == "assets":
+                try:
+                    weights = self.weights(date)
+                except ValueError:
+                    weights = pd.Series(np.nan, index=list(self.assets))
+                table = pd.DataFrame({
+                    key: {
+                        "Type": type(asset).__name__,
+                        "Weight": f"{weights.get(key, np.nan):.2%}",
+                        "Last price": f"{asset.price.current_price():,.2f}",
+                        "Annual log return": f"{asset.price.annual_return:.2%}",
+                        "Annual volatility": f"{asset.price.annual_volatility:.2%}",
+                        "Max drawdown": f"{asset.price.max_drawdown():.2%}",
+                    }
+                    for key, asset in self.assets.items()
+                }).T
+                table.index.name = "Asset"
+                lines += ["", "## Assets", "", _markdown_table(table)]
+
+            # 3. Monte Carlo summary.
+            elif section == "monte_carlo":
+                if monte_carlo is None:
+                    continue
+                summary = monte_carlo.summary()
+                years = (monte_carlo.paths.shape[0] - 1) / monte_carlo.periods_per_year
+                rows = {
+                    "Simulations": f"{monte_carlo.paths.shape[1]:,}",
+                    "Horizon (years)": f"{years:.2f}",
+                    "Mean return": f"{summary['mean']:.2%}",
+                    "Median return": f"{summary['median']:.2%}",
+                    "VaR 95%": f"{summary['var_95']:.2%}",
+                    "CVaR 95%": f"{summary['cvar_95']:.2%}",
+                    "VaR 99%": f"{summary['var_99']:.2%}",
+                    "CVaR 99%": f"{summary['cvar_99']:.2%}",
+                    "Loss probability": f"{summary['loss_probability']:.2%}",
+                }
+                table = pd.DataFrame({"Value": rows})
+                table.index.name = f"Monte Carlo: {monte_carlo.target}"
+                lines += ["", "## Monte Carlo", "", _markdown_table(table)]
+
+            # 4. Diagnostics and risk warnings.
+            elif section == "warnings":
+                try:
+                    weights = self.weights(date)
+                    for key, weight in weights[weights.abs() > max_weight].items():
+                        warnings.append(
+                            f"Concentration: {key} weighs {weight:.1%} "
+                            f"(limit {max_weight:.0%})."
+                        )
+                    for key, weight in weights[weights < 0].items():
+                        warnings.append(
+                            f"Short position in {key} ({weight:.1%}): losses are unlimited."
+                        )
+                except ValueError:
+                    pass
+                if self.cash < 0:
+                    warnings.append(
+                        f"Negative cash ({self.cash:,.2f}): the portfolio is leveraged "
+                        "and financing costs are not modelled."
+                    )
+                try:
+                    correlations = self.correlations()
+                    keys = list(correlations.columns)
+                    for i, first in enumerate(keys):
+                        for second in keys[i + 1:]:
+                            value = correlations.loc[first, second]
+                            if value > max_correlation:
+                                warnings.append(
+                                    f"High correlation between {first} and {second} "
+                                    f"({value:.2f}): little diversification."
+                                )
+                    observations = self.sampling_info()["return_observations"]
+                    if observations < min_observations:
+                        warnings.append(
+                            f"Only {observations} common return observations: "
+                            "the metrics are not reliable."
+                        )
+                except ValueError:
+                    pass
+                try:
+                    worst = self.drawdown().min()
+                    if worst < max_drawdown:
+                        warnings.append(f"Max drawdown of {worst:.1%} (limit {max_drawdown:.0%}).")
+                except ValueError:
+                    pass
+                for key, asset in self.assets.items():
+                    outliers = find_outliers(_close(asset))
+                    if len(outliers):
+                        warnings.append(
+                            f"{key}: {len(outliers)} return(s) beyond {OUTLIER_STD} standard "
+                            "deviations, kept: check that they are real and not data errors."
+                        )
+                if monte_carlo is not None and monte_carlo.loss_probability() > 0.5:
+                    warnings.append(
+                        f"Monte Carlo loss probability of {monte_carlo.loss_probability():.1%}."
+                    )
+                lines += ["", "## Risk warnings", ""]
+                lines += [f"- {text}" for text in dict.fromkeys(warnings)] or ["- No warnings."]
+
+        text = "\n".join(lines) + "\n"
+        if path is not None:
+            with open(path, "w", encoding="utf-8") as file:
+                file.write(text)
+        return text
+
+    def plots_report(self, benchmark=None, figsize=(14, 14)):
+        """Charts of the evolution, performance, correlation and risk.
+
+        Panels: equity value, drawdown, cumulative performance of each asset
+        and of the portfolio (with an optional benchmark), correlation
+        matrix, current weights and annual risk against return per asset.
+
+        Args:
+            benchmark: Stock or Index to compare with, or None.
+            figsize: Size of the whole figure.
+
+        Returns:
+            The matplotlib axes. In a script call plt.show() to see them.
+        """
+        fig, axes = plt.subplots(3, 2, figsize=figsize)
+        common = self._common_closes()
+        date = common.index[-1]
+
+        # 1. Equity value.
+        ax = axes[0, 0]
+        self.value().dropna().plot(ax=ax, color="tab:blue")
+        ax.set_title(f"Portfolio value ({self.currency})")
+        ax.set_xlabel("")
+
+        # 2. Drawdown.
+        ax = axes[0, 1]
+        drawdown = self.drawdown()
+        ax.fill_between(drawdown.index, drawdown, 0, color="tab:red", alpha=0.4)
+        ax.yaxis.set_major_formatter(PercentFormatter(1))
+        ax.set_title("Drawdown")
+
+        # 3. Cumulative performance on common dates.
+        ax = axes[1, 0]
+        (common / common.iloc[0]).plot(ax=ax, lw=1, alpha=0.8)
+        growth = self.growth()
+        (growth / growth.iloc[0]).plot(ax=ax, color="black", lw=2, label="Portfolio")
+        if benchmark is not None:
+            close = _close(benchmark).loc[self.date:date]
+            (close / close.iloc[0]).plot(
+                ax=ax, color="grey", ls="--", lw=1.5, label=f"Benchmark {_asset_id(benchmark)}"
+            )
+        ax.axhline(1, color="grey", lw=0.8)
+        ax.set_title("Cumulative performance (start = 1)")
+        ax.set_xlabel("")
+        ax.legend(fontsize=8)
+
+        # 4. Correlation matrix.
+        ax = axes[1, 1]
+        correlations = self.correlations()
+        image = ax.imshow(correlations, cmap="RdBu_r", vmin=-1, vmax=1)
+        ax.set_xticks(range(len(correlations)), correlations.columns, rotation=45, ha="right")
+        ax.set_yticks(range(len(correlations)), correlations.index)
+        for i in range(len(correlations)):
+            for j in range(len(correlations)):
+                value = correlations.iloc[i, j]
+                ax.text(j, i, f"{value:.2f}", ha="center", va="center", fontsize=8,
+                        color="white" if abs(value) > 0.6 else "black")
+        fig.colorbar(image, ax=ax, shrink=0.8)
+        ax.set_title("Correlation of returns")
+
+        # 5. Current weights, cash included.
+        ax = axes[2, 0]
+        weights = self.weights(date)
+        weights["Cash"] = self.cash_weight(date)
+        ax.bar(weights.index, weights, color=["tab:blue"] * (len(weights) - 1) + ["tab:grey"])
+        ax.axhline(0, color="grey", lw=0.8)
+        ax.yaxis.set_major_formatter(PercentFormatter(1))
+        ax.set_title(f"Weights on {date.date()}")
+
+        # 6. Annual risk against return, same frequency as the metrics.
+        ax = axes[2, 1]
+        returns = self.asset_returns()
+        periods = self.sampling_info()["periods_per_year"]
+        ax.scatter(returns.std() * np.sqrt(periods), returns.mean() * periods, color="tab:blue")
+        for key in returns.columns:
+            ax.annotate(key, (returns[key].std() * np.sqrt(periods), returns[key].mean() * periods),
+                        fontsize=8, xytext=(4, 4), textcoords="offset points")
+        ax.scatter(self.volatility(), self.expected_return(), color="black", marker="*", s=150,
+                   label="Portfolio")
+        ax.xaxis.set_major_formatter(PercentFormatter(1))
+        ax.yaxis.set_major_formatter(PercentFormatter(1))
+        ax.set_xlabel("Annual volatility")
+        ax.set_ylabel("Annual expected return")
+        ax.set_title("Risk and return")
+        ax.legend(fontsize=8)
+
+        fig.tight_layout()
+        return axes
