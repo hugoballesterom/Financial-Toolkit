@@ -9,7 +9,7 @@ from pandas.api.types import (
     is_string_dtype,
 )
 
-from .enums import Frequency
+from ..enums import Frequency
 from .macro_series import MacroSeries, parse_release
 
 

@@ -1,9 +1,9 @@
-from .cryptocurrency import Cryptocurrency
+from ..models.cryptocurrency import Cryptocurrency
 from dataclasses import dataclass, field
 import os
 import requests
-from .priceseries import PriceSeries
-from .tokenomics import Tokenomics
+from ..models.priceseries import PriceSeries
+from ..models.tokenomics import Tokenomics
 import pandas as pd
 
 @dataclass

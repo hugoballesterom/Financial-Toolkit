@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 from matplotlib.ticker import PercentFormatter
 from .cash_movement import CashMovement
-from .cleaning import OUTLIER_STD, find_outliers
-from .cryptocurrency import Cryptocurrency
+from ..ingestion.cleaning import OUTLIER_STD, find_outliers
+from ..models.cryptocurrency import Cryptocurrency
 from .monte_carlo import MonteCarloResult
 from .position import Position
 from .transaction import ALLOWED_TYPES, Transaction

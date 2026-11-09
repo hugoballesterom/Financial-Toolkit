@@ -4,9 +4,9 @@ from typing import Literal
 
 import pandas as pd
 
-from .stock import Stock
-from .index import Index
-from .cryptocurrency import Cryptocurrency
+from ..models.stock import Stock
+from ..models.index import Index
+from ..models.cryptocurrency import Cryptocurrency
 
 
 # Bonds are yield series, not prices: fixed income enters a portfolio

@@ -3,8 +3,8 @@ import xml.etree.ElementTree as ET
 
 import pandas as pd
 
-from .bond import Bond
-from .bondseries import BondSeries
+from ..models.bond import Bond
+from ..models.bondseries import BondSeries
 
 
 class BondNormalizer:
