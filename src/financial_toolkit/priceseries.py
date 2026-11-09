@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import pandas as pd
 import numpy as np
 
@@ -13,9 +13,26 @@ class PriceSeries:
     close: pd.Series
     volume: pd.Series
 
+    # Basic statistics of the log returns, computed when the series is created.
+    mean_return: float = field(init=False)
+    volatility: float = field(init=False)
+    periods_per_year: float = field(init=False)
+    annual_return: float = field(init=False)
+    annual_volatility: float = field(init=False)
+
     def __post_init__(self):
         if not pd.Index(self.date).equals(self.close.index):
             raise ValueError("date must match the index of close")
+
+        self.mean_return = float(self.compute_mean_return())
+        self.volatility = float(self.compute_volatility())
+
+        # Same convention as Portfolio: 365 days over the mean interval.
+        intervals = pd.Series(pd.Index(self.date)).diff().dt.days
+        mean_days = intervals.mean()
+        self.periods_per_year = 365 / mean_days if mean_days > 0 else np.nan
+        self.annual_return = self.mean_return * self.periods_per_year
+        self.annual_volatility = self.volatility * np.sqrt(self.periods_per_year)
 
     def to_dataframe(self) -> pd.DataFrame:
         """OHLCV table indexed by date; columns that are None are left out."""
