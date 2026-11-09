@@ -65,6 +65,7 @@ class AssetFetcher:
             ("index", "yfinance"): self.yahoo.get_index,
             ("stock", "fmp"): self.fmp.get_stock,
             ("index", "fmp"): self.fmp.get_index,
+            ("crypto", "yfinance"): self.yahoo.get_crypto,
             ("crypto", "coingecko"): self.coingecko.get_crypto,
             ("bond", "us_treasury"): self.us_treasury.get_data,
             ("bond", "bce"): self.bce.get_data,

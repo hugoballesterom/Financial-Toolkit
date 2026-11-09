@@ -7,6 +7,8 @@ import pandas as pd
 import yfinance as yf
 
 from .index import Index
+from .cryptocurrency import Cryptocurrency
+from .tokenomics import Tokenomics
 from .priceseries import PriceSeries
 from .stock import Stock
 from .company import Company
@@ -204,4 +206,39 @@ class YahooFinanceAPI:
         )
 
         return index
+
+    def get_crypto(self, symbol: str, period: str = '5y', interval: str = '1d') -> Cryptocurrency:
+
+        assert len(symbol) > 0, "The symbol must not be empty"
+        yahoo = yf.Ticker(symbol)
+        prices_df = yahoo.history(period=period,interval=interval,auto_adjust=True)
+        assert not prices_df.empty, f"The cryptocurrency {symbol} has not been found"
+
+        prices = PriceSeries(
+                date=prices_df.index,
+                open=prices_df["Open"],
+                high=prices_df["High"],
+                low=prices_df["Low"],
+                close=prices_df["Close"],
+                volume=prices_df["Volume"])
+
+        info=yahoo.info
+        if not info:
+            print(f"There is not available information for cryptocurrency {symbol}")
+            info={}
+
+        # Yahoo does not give the market cap rank or the blockchains.
+        tokenomics = Tokenomics(
+            circulating_supply=info.get('circulatingSupply'),
+            total_supply=info.get('totalSupply'),
+            max_supply=info.get('maxSupply'))
+
+        return Cryptocurrency(
+            name=info.get('name') or info.get('shortName') or symbol,
+            symbol=symbol,
+            blockchain=[],
+            price=prices,
+            market_cap=info.get('marketCap'),
+            market_cap_rank=None,
+            tokenomics=tokenomics)
 
