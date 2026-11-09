@@ -29,7 +29,13 @@ touching the core.
 ```
 Financial-Toolkit/
 ├── main.py                  # End-to-end demo
-├── src/financial_toolkit/   # Installable package with all the modules
+├── src/financial_toolkit/   # Installable package
+│   ├── apis/                # Adapters for each external source (Yahoo, FMP, CoinGecko, bonds, FRED, World Bank)
+│   ├── ingestion/           # AssetFetcher and MacroFetcher facades, bond normalizer and price cleaning
+│   ├── models/              # Standard dataclasses: price series, assets, fundamentals, bonds, macro
+│   ├── analysis/            # Portfolio, positions, transactions, cash movements and Monte Carlo
+│   ├── enums.py
+│   └── exceptions.py
 ├── tests/                   # Notebooks that test each part with known cases and real data
 ├── examples/                # Output of main.py (report and plots)
 ├── pyproject.toml           # Package metadata and dependencies (uv / pip)

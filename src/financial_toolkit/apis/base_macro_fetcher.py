@@ -6,8 +6,8 @@ from collections.abc import Callable, Iterable
 from datetime import datetime
 from typing import Any, ClassVar
 
-from .macro_releases import MacroReleases
-from .macro_series import MacroSeries
+from ..models.macro_releases import MacroReleases
+from ..models.macro_series import MacroSeries
 
 
 class BaseMacroFetcher(ABC):
@@ -134,7 +134,7 @@ class BaseMacroFetcher(ABC):
             reasons = "; ".join(f"{id_!r} ({why})" for id_, why in failed.items())
             warnings.warn(
                 f"{len(failed)} of {len(failed) + len(results)} ids failed: {reasons}",
-                skip_file_prefixes=(os.path.dirname(__file__),),
+                skip_file_prefixes=(os.path.dirname(os.path.dirname(__file__)),),
             )
 
         return results

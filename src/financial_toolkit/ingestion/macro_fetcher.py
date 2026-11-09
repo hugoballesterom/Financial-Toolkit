@@ -2,11 +2,11 @@ from collections.abc import Iterable
 from datetime import datetime
 from typing import ClassVar
 
-from .base_macro_fetcher import BaseMacroFetcher
-from .fred_fetcher import FREDFetcher
-from .macro_releases import MacroReleases
-from .macro_series import MacroSeries
-from .wb_fetcher import WorldBankFetcher
+from ..apis.base_macro_fetcher import BaseMacroFetcher
+from ..apis.fred_fetcher import FREDFetcher
+from ..models.macro_releases import MacroReleases
+from ..models.macro_series import MacroSeries
+from ..apis.wb_fetcher import WorldBankFetcher
 
 
 class MacroFetcher:

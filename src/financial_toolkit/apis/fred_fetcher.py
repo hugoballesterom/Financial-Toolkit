@@ -10,10 +10,10 @@ from dotenv import load_dotenv
 from fredapi import Fred
 
 from .base_macro_fetcher import BaseMacroFetcher
-from .enums import Frequency
-from .exceptions import RateLimitError
-from .macro_releases import MacroReleases
-from .macro_series import MacroSeries
+from ..enums import Frequency
+from ..exceptions import RateLimitError
+from ..models.macro_releases import MacroReleases
+from ..models.macro_series import MacroSeries
 
 
 class FREDFetcher(BaseMacroFetcher):

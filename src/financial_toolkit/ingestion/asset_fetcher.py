@@ -3,13 +3,13 @@ from dataclasses import dataclass, field, replace
 
 import pandas as pd
 
-from .YahooFinanceAPI import YahooFinanceAPI
-from .fmp_api import FMPAPI
-from .coingeckoapi import CoinGeckoApi
-from .us_treasury_api import USTreasuryAPI
-from .bce_bond_api import BCEBondAPI
-from .jp_bond_api import JapanBondAPI
-from .uk_bond_api import UKBondAPI
+from ..apis.YahooFinanceAPI import YahooFinanceAPI
+from ..apis.fmp_api import FMPAPI
+from ..apis.coingeckoapi import CoinGeckoApi
+from ..apis.us_treasury_api import USTreasuryAPI
+from ..apis.bce_bond_api import BCEBondAPI
+from ..apis.jp_bond_api import JapanBondAPI
+from ..apis.uk_bond_api import UKBondAPI
 from .bond_normalizer import BondNormalizer
 from .cleaning import clean_prices
 

@@ -6,19 +6,19 @@ import math
 import pandas as pd
 import yfinance as yf
 
-from .index import Index
-from .cryptocurrency import Cryptocurrency
-from .tokenomics import Tokenomics
-from .priceseries import PriceSeries
-from .stock import Stock
-from .company import Company
-from .fundamentals import Fundamentals
-from .income_statement import IncomeStatement
-from .income_statement_history import IncomeStatementHistory
-from .balance_sheet import BalanceSheet
-from .balance_sheet_history import BalanceSheetHistory
-from .cashflow import CashFlow
-from .cashflow_history import CashFlowHistory
+from ..models.index import Index
+from ..models.cryptocurrency import Cryptocurrency
+from ..models.tokenomics import Tokenomics
+from ..models.priceseries import PriceSeries
+from ..models.stock import Stock
+from ..models.company import Company
+from ..models.fundamentals import Fundamentals
+from ..models.income_statement import IncomeStatement
+from ..models.income_statement_history import IncomeStatementHistory
+from ..models.balance_sheet import BalanceSheet
+from ..models.balance_sheet_history import BalanceSheetHistory
+from ..models.cashflow import CashFlow
+from ..models.cashflow_history import CashFlowHistory
 
 income = [
     "Total Revenue",
