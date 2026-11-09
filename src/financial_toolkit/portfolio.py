@@ -35,7 +35,7 @@ def _close(asset):
     if not isinstance(asset, ALLOWED_TYPES):
         raise TypeError("Invalid asset type")
     if getattr(asset, "price", None) is None:
-        raise ValueError("Asset requires a price series; bond yields are not prices")
+        raise ValueError("Asset requires a price series")
     close = asset.price.close.copy()
     if close.empty:
         raise ValueError("Empty price series")
@@ -161,7 +161,7 @@ class Portfolio:
 
     def _record(self, asset, transaction_type, quantity, date, price=None):
         date = self._check_date(date)
-        _close(asset)  # Reject yield-only bonds and assets without usable prices.
+        _close(asset)  # Reject assets without usable prices.
         price = _price(asset, date) if price is None else price
         transaction = Transaction(asset, transaction_type, quantity, price, date)
         self._execute([transaction])

@@ -6,12 +6,13 @@ import pandas as pd
 
 from .stock import Stock
 from .index import Index
-from .bond import Bond
 from .cryptocurrency import Cryptocurrency
 
 
-Asset = Stock | Index | Bond | Cryptocurrency
-ALLOWED_TYPES = (Stock, Index, Bond, Cryptocurrency)
+# Bonds are yield series, not prices: fixed income enters a portfolio
+# through bond ETFs (for example IEF or TLT) downloaded as stocks.
+Asset = Stock | Index | Cryptocurrency
+ALLOWED_TYPES = (Stock, Index, Cryptocurrency)
 
 
 @dataclass
